@@ -1,4 +1,4 @@
-# ArsipLink — Aplikasi Pengarsipan URL/Link
+# Accank Arsip Link — Aplikasi Pengarsipan URL/Link
 
 Platform terpusat untuk menyimpan dan menemukan kembali URL/link yang pernah dibagikan secara cepat. Target: waktu pencarian < 5 detik (pencarian real-time di aplikasi ini umumnya < 10 ms, ditampilkan langsung di UI).
 
@@ -44,7 +44,7 @@ Semua data contoh bisa dihapus per item (tombol Hapus), atau sekaligus lewat tom
 
 ## Tabel Pemetaan Fitur PRD → Implementasi
 
-| # | Fitur PRD | Prioritas | Implementasi di ArsipLink | Status |
+| # | Fitur PRD | Prioritas | Implementasi di Accank Arsip Link | Status |
 |---|-----------|-----------|---------------------------|--------|
 | 1 | Penyimpanan URL Cepat & Ekstraksi Metadata Otomatis | Must Have | `app/api/metadata/route.ts` — fetch server-side (timeout 8 dtk, User-Agent browser), parse `<title>`, meta description / `og:description`, `og:image`, favicon (`link rel=icon`, fallback Google S2 Favicons & `/favicon.ico`). Form: tempel URL → otomatis ambil info saat blur/paste + tombol "Ambil Info Otomatis" → pratinjau → bisa edit manual. Error ditangani anggun (tetap bisa simpan, judul = domain). | ✅ Selesai |
 | 2 | Kategori & Tagging Terstruktur | Must Have | Kategori berlabel warna (palet 8 warna: Emerald, Biru, Ungu, Merah Muda, Oranye, Kuning, Teal, Abu), bisa tambah/edit/hapus via "Kelola Kategori". Tag kustom via input koma. Seed 5 kategori. Chip kategori berwarna + tag di kartu. | ✅ Selesai |
