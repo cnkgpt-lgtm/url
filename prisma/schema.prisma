@@ -1,0 +1,55 @@
+// Accank Arsip Link v2 — Prisma schema (PostgreSQL / Neon)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String?
+  email        String     @unique
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  categories   Category[]
+  links        LinkItem[]
+}
+
+model Category {
+  id     String     @id @default(cuid())
+  name   String
+  color  String
+  userId String
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  links  LinkItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model LinkItem {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  url           String
+  normalizedUrl String
+  title         String
+  description   String    @default("")
+  image         String    @default("")
+  favicon       String    @default("")
+  domain        String
+  tags          String[]
+  clicks        Int       @default(0)
+  favorite      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, normalizedUrl])
+}

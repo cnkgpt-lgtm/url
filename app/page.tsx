@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import NextLink from "next/link";
+import { signOut, useSession } from "next-auth/react";
 import type { AppData, Category, LinkItem } from "@/lib/types";
 import { COLOR_PALETTE, STORAGE_KEY } from "@/lib/types";
-import { getSeedData } from "@/lib/seed";
 import {
   ensureUrl,
   extractDomain,
@@ -11,7 +12,6 @@ import {
   formatDateID,
   isValidUrl,
   normalizeUrlStrict,
-  uid,
 } from "@/lib/utils";
 
 type SortKey = "newest" | "oldest" | "title" | "clicks";
@@ -28,8 +28,110 @@ interface MetadataResult {
 }
 
 export default function Home() {
+  const { data: session, status } = useSession();
+
+  if (status === "loading") {
+    return (
+      <main className="mx-auto max-w-7xl px-4 py-10">
+        <p className="text-slate-500">Memuat Accank Arsip Link…</p>
+      </main>
+    );
+  }
+
+  if (!session?.user) {
+    return <Welcome />;
+  }
+
+  return (
+    <ArchiveApp
+      userName={session.user.name || ""}
+      userEmail={session.user.email || ""}
+    />
+  );
+}
+
+function Welcome() {
+  return (
+    <main className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white/90">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-xl text-white">🔗</div>
+            <div>
+              <h1 className="text-lg font-bold leading-tight text-slate-900">Accank Arsip Link</h1>
+              <p className="text-xs text-slate-500">Simpan & temukan kembali link dalam &lt; 5 detik</p>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <NextLink href="/login" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50">
+              Masuk
+            </NextLink>
+            <NextLink href="/register" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
+              Daftar Gratis
+            </NextLink>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-6">
+        <div className="text-6xl">🔗</div>
+        <h2 className="mt-5 text-3xl font-bold leading-tight text-slate-900">
+          Semua link penting Anda, tersimpan rapi dalam satu arsip
+        </h2>
+        <p className="mx-auto mt-4 max-w-xl text-base text-slate-600">
+          Tempel URL — judul, deskripsi, dan favicon terisi otomatis. Beri kategori berwarna dan tag,
+          lalu temukan kembali dalam sekejap lewat pencarian real-time.
+        </p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <NextLink href="/register" className="rounded-lg bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
+            Buat Akun Gratis
+          </NextLink>
+          <NextLink href="/login" className="rounded-lg border border-slate-300 bg-white px-6 py-3 text-sm font-semibold hover:bg-slate-50">
+            Masuk
+          </NextLink>
+        </div>
+
+        <div className="mx-auto mt-10 grid max-w-2xl grid-cols-1 gap-3 text-left sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-2xl">⚡</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">Simpan super cepat</p>
+            <p className="mt-1 text-xs text-slate-500">Metadata URL diambil otomatis, tanpa ketik manual.</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-2xl">🏷️</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">Kategori & tag</p>
+            <p className="mt-1 text-xs text-slate-500">Kelompokkan dengan kategori berwarna dan tag kustom.</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-2xl">📱</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">Sinkron semua perangkat</p>
+            <p className="mt-1 text-xs text-slate-500">Arsip tersimpan per akun di server — buka dari HP atau laptop, isinya sama.</p>
+          </div>
+        </div>
+
+        <p className="mt-10 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Arsip tersimpan <strong>per akun</strong> dan bisa dibuka dari perangkat apa pun.
+          Silakan masuk atau daftar untuk mulai mengarsipkan.
+        </p>
+      </div>
+
+      <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-400">
+        <p className="font-medium text-slate-500">Accank Arsip Link — Aplikasi Pengarsipan URL/Link</p>
+        <p className="mt-1">Data tersimpan aman per akun di server dan sinkron antarperangkat.</p>
+      </footer>
+    </main>
+  );
+}
+
+function ArchiveApp({ userName, userEmail }: { userName: string; userEmail: string }) {
   const [data, setData] = useState<AppData>({ links: [], categories: [] });
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  // local (v1) archive migration
+  const [localData, setLocalData] = useState<AppData | null>(null);
+  const [localImporting, setLocalImporting] = useState(false);
+  const [localImported, setLocalImported] = useState(false);
 
   // search & filter
   const [search, setSearch] = useState("");
@@ -53,6 +155,7 @@ export default function Home() {
   const [formCategory, setFormCategory] = useState("");
   const [formTags, setFormTags] = useState("");
   const [fetchingMeta, setFetchingMeta] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [metaWarning, setMetaWarning] = useState("");
   const [metaPreview, setMetaPreview] = useState<MetadataResult | null>(null);
 
@@ -67,45 +170,85 @@ export default function Home() {
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
   const [editingCatColor, setEditingCatColor] = useState(COLOR_PALETTE[0].hex);
+  const [catError, setCatError] = useState("");
 
   // delete confirm
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmClearStep, setConfirmClearStep] = useState(0);
+  const [clearing, setClearing] = useState(false);
 
   // import/export feedback
   const [importMsg, setImportMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Load
+  const loadData = useCallback(async () => {
+    try {
+      const [linksRes, catsRes] = await Promise.all([fetch("/api/links"), fetch("/api/categories")]);
+      if (linksRes.status === 401 || catsRes.status === 401) {
+        setLoadError("Sesi berakhir. Silakan masuk lagi.");
+        return;
+      }
+      const linksJson = await linksRes.json();
+      const catsJson = await catsRes.json();
+      setData({
+        links: Array.isArray(linksJson.links) ? linksJson.links : [],
+        categories: Array.isArray(catsJson.categories) ? catsJson.categories : [],
+      });
+      setLoadError("");
+    } catch {
+      setLoadError("Gagal memuat data dari server. Periksa koneksi lalu muat ulang halaman.");
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Deteksi arsip lokal v1 di perangkat ini (untuk ditawarkan impor ke akun)
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as AppData;
-        if (parsed && Array.isArray(parsed.links) && Array.isArray(parsed.categories)) {
-          setData(parsed);
-        } else {
-          setData(getSeedData());
-        }
-      } else {
-        const seed = getSeedData();
-        setData(seed);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as AppData;
+      if (parsed && Array.isArray(parsed.links) && parsed.links.length > 0) {
+        setLocalData(parsed);
       }
-    } catch {
-      setData(getSeedData());
-    }
-    setLoaded(true);
+    } catch {}
   }, []);
 
-  // Save
-  useEffect(() => {
-    if (!loaded) return;
+  async function importLocalArchive() {
+    if (!localData) return;
+    setLocalImporting(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      const res = await fetch("/api/links/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categories: localData.categories, links: localData.links }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Impor gagal");
+      setLocalImported(true);
+      setImportMsg(
+        `Arsip lokal berhasil diimpor ke akun: ${j.ditambahkan} link ditambahkan, ${j.dilewati} duplikat dilewati${j.kategoriBaru ? `, ${j.kategoriBaru} kategori baru dibuat` : ""}.`
+      );
+      await loadData();
+    } catch (e) {
+      setImportMsg(e instanceof Error ? e.message : "Impor arsip lokal gagal.");
+    } finally {
+      setLocalImporting(false);
+    }
+  }
+
+  function clearLocalArchive() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
     } catch {}
-  }, [data, loaded]);
+    setLocalData(null);
+    setLocalImported(false);
+  }
 
   const categoriesById = useMemo(() => {
     const map = new Map<string, Category>();
@@ -148,7 +291,8 @@ export default function Home() {
     let result = [...data.links];
 
     if (showFavoritesOnly) result = result.filter((l) => l.favorite);
-    if (filterCategory !== "all") result = result.filter((l) => l.categoryId === filterCategory);
+    if (filterCategory === "none") result = result.filter((l) => !l.categoryId);
+    else if (filterCategory !== "all") result = result.filter((l) => l.categoryId === filterCategory);
     if (filterTag !== "all") result = result.filter((l) => l.tags.includes(filterTag));
     if (filterDomain !== "all") result = result.filter((l) => l.domain === filterDomain);
     if (filterRange !== "all") {
@@ -166,7 +310,7 @@ export default function Home() {
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter((l) => {
-        const catName = categoriesById.get(l.categoryId)?.name.toLowerCase() || "";
+        const catName = (l.categoryId ? categoriesById.get(l.categoryId)?.name.toLowerCase() : "") || "";
         return (
           l.title.toLowerCase().includes(q) ||
           l.url.toLowerCase().includes(q) ||
@@ -178,14 +322,12 @@ export default function Home() {
       });
     }
 
-    // sort
     if (sort === "newest") result.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     else if (sort === "oldest") result.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
     else if (sort === "title") result.sort((a, b) => a.title.localeCompare(b.title, "id"));
     else if (sort === "clicks") result.sort((a, b) => b.clicks - a.clicks);
 
     const elapsed = performance.now() - start;
-    // set asynchronously to avoid render loop - use queueMicrotask
     queueMicrotask(() => setSearchMs(Math.round(elapsed * 10) / 10));
     return result;
   }, [data.links, search, filterCategory, filterTag, filterDomain, filterRange, sort, categoriesById, showFavoritesOnly]);
@@ -246,93 +388,89 @@ export default function Home() {
     setFormDesc(item.description);
     setFormImage(item.image || "");
     setFormFavicon(item.favicon);
-    setFormCategory(item.categoryId);
+    setFormCategory(item.categoryId || "");
     setFormTags(item.tags.join(", "));
     setMetaPreview(null);
     setMetaWarning("");
     setShowForm(true);
   }
 
-  function doSave(force = false) {
+  async function doSave(force = false) {
     const url = ensureUrl(formUrl);
     if (!isValidUrl(url)) {
       setMetaWarning("URL tidak valid.");
       return;
     }
-    const normalized = normalizeUrlStrict(url);
-    if (!force && !editingId) {
-      const dup = data.links.find((l) => l.normalizedUrl === normalized);
-      if (dup) {
-        setDuplicateItem(dup);
-        setPendingSave(true);
-        return;
-      }
-    }
-    if (!force && editingId) {
-      const dup = data.links.find((l) => l.normalizedUrl === normalized && l.id !== editingId);
-      if (dup) {
-        setDuplicateItem(dup);
-        setPendingSave(true);
-        return;
-      }
-    }
-    const domain = extractDomain(url);
     const tags = formTags
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
-    const now = new Date().toISOString();
-
-    if (editingId) {
-      setData((prev) => ({
-        ...prev,
-        links: prev.links.map((l) =>
-          l.id === editingId
-            ? {
-                ...l,
-                url,
-                normalizedUrl: normalized,
-                title: formTitle.trim() || domain,
-                description: formDesc.trim(),
-                image: formImage || undefined,
-                favicon: formFavicon || faviconForDomain(domain),
-                domain,
-                categoryId: formCategory || prev.categories[0]?.id || "cat-umum",
-                tags,
-                updatedAt: now,
-              }
-            : l
-        ),
-      }));
-    } else {
-      const newItem: LinkItem = {
-        id: uid(),
-        url,
-        normalizedUrl: normalized,
-        title: formTitle.trim() || domain,
-        description: formDesc.trim(),
-        image: formImage || undefined,
-        favicon: formFavicon || faviconForDomain(domain),
-        domain,
-        categoryId: formCategory || data.categories[0]?.id || "cat-umum",
-        tags,
-        clicks: 0,
-        favorite: false,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setData((prev) => ({ ...prev, links: [newItem, ...prev.links] }));
+    const payload = {
+      url,
+      title: formTitle.trim(),
+      description: formDesc.trim(),
+      image: formImage,
+      favicon: formFavicon,
+      categoryId: formCategory || null,
+      tags,
+      force,
+    };
+    setSaving(true);
+    setMetaWarning("");
+    try {
+      const res = editingId
+        ? await fetch(`/api/links/${editingId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/links", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+      const j = await res.json();
+      if (res.status === 409 && j.existing) {
+        setDuplicateItem(j.existing as LinkItem);
+        setPendingSave(true);
+        return;
+      }
+      if (!res.ok) throw new Error(j.error || "Gagal menyimpan link.");
+      const saved = j.link as LinkItem;
+      setData((prev) =>
+        editingId
+          ? { ...prev, links: prev.links.map((l) => (l.id === saved.id ? saved : l)) }
+          : { ...prev, links: [saved, ...prev.links] }
+      );
+      setShowForm(false);
+      resetForm();
+    } catch (e) {
+      setMetaWarning(e instanceof Error ? e.message : "Gagal menyimpan link.");
+    } finally {
+      setSaving(false);
     }
-    setShowForm(false);
-    resetForm();
   }
 
-  function handleOpen(item: LinkItem) {
+  async function handleOpen(item: LinkItem) {
     setData((prev) => ({
       ...prev,
       links: prev.links.map((l) => (l.id === item.id ? { ...l, clicks: l.clicks + 1 } : l)),
     }));
     window.open(item.url, "_blank", "noopener,noreferrer");
+    try {
+      const res = await fetch(`/api/links/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ click: true }),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        setData((prev) => ({
+          ...prev,
+          links: prev.links.map((l) => (l.id === item.id ? (j.link as LinkItem) : l)),
+        }));
+      }
+    } catch {}
   }
 
   async function handleCopy(item: LinkItem) {
@@ -343,41 +481,83 @@ export default function Home() {
     } catch {}
   }
 
-  function handleDelete(id: string) {
-    setData((prev) => ({ ...prev, links: prev.links.filter((l) => l.id !== id) }));
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch(`/api/links/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setData((prev) => ({ ...prev, links: prev.links.filter((l) => l.id !== id) }));
+    } catch {
+      setImportMsg("Gagal menghapus link. Silakan coba lagi.");
+    }
     setDeletingId(null);
   }
 
-  function toggleFavorite(id: string) {
-    setData((prev) => ({
-      ...prev,
-      links: prev.links.map((l) => (l.id === id ? { ...l, favorite: !l.favorite } : l)),
-    }));
+  async function toggleFavorite(item: LinkItem) {
+    try {
+      const res = await fetch(`/api/links/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite: !item.favorite }),
+      });
+      if (!res.ok) throw new Error();
+      const j = await res.json();
+      setData((prev) => ({
+        ...prev,
+        links: prev.links.map((l) => (l.id === item.id ? (j.link as LinkItem) : l)),
+      }));
+    } catch {}
   }
 
-  // Categories CRUD
-  function addCategory() {
+  // Categories CRUD (server)
+  async function addCategory() {
     if (!newCatName.trim()) return;
-    const cat: Category = { id: uid(), name: newCatName.trim(), color: newCatColor };
-    setData((prev) => ({ ...prev, categories: [...prev.categories, cat] }));
-    setNewCatName("");
+    setCatError("");
+    try {
+      const res = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCatName.trim(), color: newCatColor }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Gagal menambah kategori.");
+      setData((prev) => ({ ...prev, categories: [...prev.categories, j.category as Category] }));
+      setNewCatName("");
+    } catch (e) {
+      setCatError(e instanceof Error ? e.message : "Gagal menambah kategori.");
+    }
   }
-  function saveEditCategory() {
+  async function saveEditCategory() {
     if (!editingCatId || !editingCatName.trim()) return;
-    setData((prev) => ({
-      ...prev,
-      categories: prev.categories.map((c) =>
-        c.id === editingCatId ? { ...c, name: editingCatName.trim(), color: editingCatColor } : c
-      ),
-    }));
-    setEditingCatId(null);
+    setCatError("");
+    try {
+      const res = await fetch(`/api/categories/${editingCatId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editingCatName.trim(), color: editingCatColor }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Gagal mengubah kategori.");
+      setData((prev) => ({
+        ...prev,
+        categories: prev.categories.map((c) => (c.id === editingCatId ? (j.category as Category) : c)),
+      }));
+      setEditingCatId(null);
+    } catch (e) {
+      setCatError(e instanceof Error ? e.message : "Gagal mengubah kategori.");
+    }
   }
-  function deleteCategory(id: string) {
-    const fallback = data.categories.find((c) => c.id !== id)?.id || "";
-    setData((prev) => ({
-      categories: prev.categories.filter((c) => c.id !== id),
-      links: prev.links.map((l) => (l.categoryId === id ? { ...l, categoryId: fallback } : l)),
-    }));
+  async function deleteCategory(id: string) {
+    setCatError("");
+    try {
+      const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setData((prev) => ({
+        categories: prev.categories.filter((c) => c.id !== id),
+        links: prev.links.map((l) => (l.categoryId === id ? { ...l, categoryId: null } : l)),
+      }));
+    } catch {
+      setCatError("Gagal menghapus kategori. Silakan coba lagi.");
+    }
   }
 
   // Export / Import
@@ -389,7 +569,7 @@ export default function Home() {
     const header = "Judul,URL,Domain,Kategori,Tag,Deskripsi,Jumlah Akses,Favorit,Tanggal Simpan\n";
     const rows = data.links
       .map((l) => {
-        const cat = categoriesById.get(l.categoryId)?.name || "";
+        const cat = (l.categoryId ? categoriesById.get(l.categoryId)?.name : "") || "";
         const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
         return [esc(l.title), esc(l.url), esc(l.domain), esc(cat), esc(l.tags.join("; ")), esc(l.description), String(l.clicks), l.favorite ? "Ya" : "Tidak", esc(l.createdAt)].join(",");
       })
@@ -409,52 +589,29 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        const parsed = JSON.parse(String(reader.result)) as AppData;
-        const incomingLinks: LinkItem[] = Array.isArray(parsed) ? (parsed as unknown as LinkItem[]) : parsed.links;
+        const parsed = JSON.parse(String(reader.result)) as AppData | LinkItem[];
+        const incomingLinks: LinkItem[] = Array.isArray(parsed) ? parsed : parsed.links;
         const incomingCats: Category[] = !Array.isArray(parsed) && Array.isArray(parsed.categories) ? parsed.categories : [];
         if (!Array.isArray(incomingLinks)) throw new Error("Format tidak dikenal");
-        // merge categories
-        let mergedCats = [...data.categories];
-        for (const c of incomingCats) {
-          if (c.id && c.name && !mergedCats.find((x) => x.id === c.id)) mergedCats.push(c);
-        }
-        const existingNorm = new Set(data.links.map((l) => l.normalizedUrl));
-        let added = 0;
-        let skipped = 0;
-        const newLinks: LinkItem[] = [];
-        for (const raw of incomingLinks) {
-          if (!raw.url) {
-            skipped++;
-            continue;
-          }
-          const norm = raw.normalizedUrl || normalizeUrlStrict(raw.url);
-          if (existingNorm.has(norm)) {
-            skipped++;
-            continue;
-          }
-          existingNorm.add(norm);
-          newLinks.push({
-            id: raw.id && !data.links.find((l) => l.id === raw.id) ? raw.id : uid(),
-            url: ensureUrl(raw.url),
-            normalizedUrl: norm,
-            title: raw.title || extractDomain(raw.url),
-            description: raw.description || "",
-            image: raw.image,
-            favicon: raw.favicon || faviconForDomain(extractDomain(raw.url)),
-            domain: raw.domain || extractDomain(raw.url),
-            categoryId: raw.categoryId || mergedCats[0]?.id || "cat-umum",
-            tags: Array.isArray(raw.tags) ? raw.tags : [],
-            clicks: typeof raw.clicks === "number" ? raw.clicks : 0,
-            favorite: !!raw.favorite,
-            createdAt: raw.createdAt || new Date().toISOString(),
-            updatedAt: raw.updatedAt || new Date().toISOString(),
-          });
-          added++;
-        }
-        setData({ categories: mergedCats, links: [...newLinks, ...data.links] });
-        setImportMsg(`Impor selesai: ${added} link ditambahkan, ${skipped} duplikat/invalid dilewati.`);
+        // Lengkapi nama kategori untuk pencocokan di server
+        const catNameById = new Map<string, string>();
+        incomingCats.forEach((c) => catNameById.set(c.id, c.name));
+        data.categories.forEach((c) => catNameById.set(c.id, c.name));
+        const payloadLinks = incomingLinks.map((l) => ({
+          ...l,
+          categoryName: l.categoryId ? catNameById.get(l.categoryId) : undefined,
+        }));
+        const res = await fetch("/api/links/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ categories: incomingCats, links: payloadLinks }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || "Impor gagal");
+        setImportMsg(`Impor selesai: ${j.ditambahkan} link ditambahkan, ${j.dilewati} duplikat/invalid dilewati.`);
+        await loadData();
       } catch {
         setImportMsg("Impor gagal: file JSON tidak valid.");
       }
@@ -463,19 +620,28 @@ export default function Home() {
     reader.readAsText(file);
   }
 
-  function handleClearAll() {
+  async function handleClearAll() {
     if (confirmClearStep === 0) {
       setConfirmClearStep(1);
       return;
     }
-    setData((prev) => ({ ...prev, links: [] }));
-    setConfirmClearStep(0);
+    setClearing(true);
+    try {
+      await Promise.all(data.links.map((l) => fetch(`/api/links/${l.id}`, { method: "DELETE" })));
+      setData((prev) => ({ ...prev, links: [] }));
+    } catch {
+      setImportMsg("Sebagian link gagal dihapus. Muat ulang halaman untuk memeriksa.");
+      await loadData();
+    } finally {
+      setClearing(false);
+      setConfirmClearStep(0);
+    }
   }
 
   if (!loaded) {
     return (
       <main className="mx-auto max-w-7xl px-4 py-10">
-        <p className="text-slate-500">Memuat Accank Arsip Link…</p>
+        <p className="text-slate-500">Memuat arsip Anda dari server…</p>
       </main>
     );
   }
@@ -493,23 +659,70 @@ export default function Home() {
             </div>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="mr-1 hidden text-right sm:block">
+              <p className="text-sm font-semibold leading-tight text-slate-900">{userName || userEmail}</p>
+              <p className="text-xs leading-tight text-slate-500">{userEmail}</p>
+            </div>
             <button onClick={() => setShowCatManager(true)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">
               Kelola Kategori
             </button>
-            <div className="relative">
-              <button onClick={exportJSON} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">Ekspor JSON</button>
-            </div>
+            <button onClick={exportJSON} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">Ekspor JSON</button>
             <button onClick={exportCSV} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">Ekspor CSV</button>
             <button onClick={() => fileInputRef.current?.click()} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">Impor JSON</button>
             <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFile} />
             <button onClick={openAdd} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
               + Tambah Link
             </button>
+            <button
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Keluar
+            </button>
           </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        {loadError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>
+        )}
+
+        {/* Banner migrasi arsip lokal v1 */}
+        {localData && !localImported && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4">
+            <p className="font-semibold text-amber-900">📦 Ada arsip lokal di perangkat ini</p>
+            <p className="mt-1 text-sm text-amber-800">
+              Ditemukan {localData.links.length} link dari versi lama (tersimpan di browser ini). Impor ke akun Anda agar
+              tersimpan di server dan bisa dibuka dari perangkat apa pun. Link duplikat akan dilewati otomatis.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={importLocalArchive}
+                disabled={localImporting}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {localImporting ? "Mengimpor…" : "Impor ke Akun"}
+              </button>
+              <button onClick={() => setLocalData(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm">
+                Nanti Saja
+              </button>
+            </div>
+          </div>
+        )}
+        {localData && localImported && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-sm text-emerald-800">
+              ✅ Arsip lokal sudah diimpor ke akun. Anda boleh menghapus salinan lokal di browser ini agar tidak bingung —
+              data di server tetap aman.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={clearLocalArchive} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Hapus Data Lokal</button>
+              <button onClick={() => setLocalData(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">Biarkan</button>
+            </div>
+          </div>
+        )}
+
         {importMsg && (
           <div className="mb-4 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <span>{importMsg}</span>
@@ -571,6 +784,7 @@ export default function Home() {
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
               <option value="all">Semua Kategori</option>
+              <option value="none">Tanpa Kategori</option>
               {data.categories.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -656,7 +870,7 @@ export default function Home() {
         ) : viewMode === "grid" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((item) => {
-              const cat = categoriesById.get(item.categoryId);
+              const cat = item.categoryId ? categoriesById.get(item.categoryId) : undefined;
               return (
                 <article key={item.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md">
                   <div className="flex items-start gap-3">
@@ -666,7 +880,7 @@ export default function Home() {
                       <h3 className="line-clamp-2 font-semibold leading-snug text-slate-900">{item.title}</h3>
                       <p className="truncate text-xs text-emerald-700">{item.domain}</p>
                     </div>
-                    <button onClick={() => toggleFavorite(item.id)} title="Favorit" className={`text-lg ${item.favorite ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}`}>
+                    <button onClick={() => toggleFavorite(item)} title="Favorit" className={`text-lg ${item.favorite ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}`}>
                       {item.favorite ? "★" : "☆"}
                     </button>
                   </div>
@@ -699,7 +913,7 @@ export default function Home() {
         ) : (
           <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white shadow-sm">
             {filtered.map((item) => {
-              const cat = categoriesById.get(item.categoryId);
+              const cat = item.categoryId ? categoriesById.get(item.categoryId) : undefined;
               return (
                 <div key={item.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -707,7 +921,7 @@ export default function Home() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="truncate font-semibold text-slate-900">{item.title}</h3>
-                      <button onClick={() => toggleFavorite(item.id)} className={item.favorite ? "text-amber-500" : "text-slate-300"}>{item.favorite ? "★" : "☆"}</button>
+                      <button onClick={() => toggleFavorite(item)} className={item.favorite ? "text-amber-500" : "text-slate-300"}>{item.favorite ? "★" : "☆"}</button>
                     </div>
                     <p className="truncate text-xs text-slate-500">{item.url}</p>
                     {item.description && <p className="line-clamp-2 text-sm text-slate-600">{item.description}</p>}
@@ -732,13 +946,15 @@ export default function Home() {
         {/* Danger zone */}
         {data.links.length > 0 && (
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50/60 px-4 py-3">
-            <p className="text-sm text-red-700">Zona berbahaya — menghapus semua link tidak bisa dibatalkan.</p>
+            <p className="text-sm text-red-700">Zona berbahaya — menghapus semua link di akun Anda tidak bisa dibatalkan.</p>
             {confirmClearStep === 0 ? (
               <button onClick={handleClearAll} className="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-600">Hapus semua data</button>
             ) : (
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-red-700">Yakin? Klik sekali lagi untuk konfirmasi:</span>
-                <button onClick={handleClearAll} className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white">Ya, Hapus Semua ({data.links.length})</button>
+                <button onClick={handleClearAll} disabled={clearing} className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                  {clearing ? "Menghapus…" : `Ya, Hapus Semua (${data.links.length})`}
+                </button>
                 <button onClick={() => setConfirmClearStep(0)} className="rounded-lg border px-3 py-2 text-sm">Batal</button>
               </div>
             )}
@@ -747,7 +963,7 @@ export default function Home() {
 
         <footer className="mt-10 border-t border-slate-200 pt-6 pb-4 text-center text-xs text-slate-400">
           <p className="font-medium text-slate-500">Accank Arsip Link — Aplikasi Pengarsipan URL/Link</p>
-          <p className="mt-1">Data tersimpan di localStorage browser ini (kunci <code>arsip-link-v1</code>) — per browser/perangkat, tidak sinkron antarperangkat, tanpa login. Ekspor JSON secara berkala untuk cadangan.</p>
+          <p className="mt-1">Data tersimpan aman per akun di server — sinkron antarperangkat, bisa dibuka dari HP, laptop, atau perangkat apa pun setelah masuk.</p>
         </footer>
       </div>
 
@@ -805,6 +1021,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-medium text-slate-700">Kategori</label>
                 <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm">
+                  <option value="">— Tanpa Kategori —</option>
                   {data.categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
                 </select>
               </div>
@@ -832,8 +1049,8 @@ export default function Home() {
             )}
 
             <div className="mt-6 flex gap-2">
-              <button onClick={() => doSave(false)} className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
-                {editingId ? "Simpan Perubahan" : "Simpan Link"}
+              <button onClick={() => doSave(false)} disabled={saving} className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+                {saving ? "Menyimpan…" : editingId ? "Simpan Perubahan" : "Simpan Link"}
               </button>
               <button onClick={() => setShowForm(false)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm">Batal</button>
             </div>
@@ -849,13 +1066,14 @@ export default function Home() {
               <h2 className="text-lg font-bold">Kelola Kategori</h2>
               <button onClick={() => setShowCatManager(false)} className="rounded-lg px-2 py-1 hover:bg-slate-100">✕</button>
             </div>
+            {catError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{catError}</p>}
             <div className="mt-4 space-y-2">
               {data.categories.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
                   <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
                   {editingCatId === c.id ? (
                     <>
-                      <input value={editingCatName} onChange={(e) => setEditingCatName(e.target.value)} className="flex-1 rounded border px-2 py-1 text-sm" />
+                      <input value={editingCatName} onChange={(e) => setEditingCatName(e.target.value)} className="min-w-0 flex-1 rounded border px-2 py-1 text-sm" />
                       <div className="flex gap-1">
                         {COLOR_PALETTE.map((col) => (
                           <button key={col.hex} onClick={() => setEditingCatColor(col.hex)} className={`h-6 w-6 rounded-full ${editingCatColor === col.hex ? "ring-2 ring-slate-900 ring-offset-1" : ""}`} style={{ backgroundColor: col.hex }} title={col.name} />
@@ -869,11 +1087,12 @@ export default function Home() {
                       <span className="flex-1 text-sm font-medium">{c.name}</span>
                       <span className="text-xs text-slate-400">{data.links.filter((l) => l.categoryId === c.id).length} link</span>
                       <button onClick={() => { setEditingCatId(c.id); setEditingCatName(c.name); setEditingCatColor(c.color); }} className="rounded border px-2 py-1 text-xs">Edit</button>
-                      <button onClick={() => { if (confirm(`Hapus kategori "${c.name}"? Link di dalamnya akan dipindah ke kategori lain.`)) deleteCategory(c.id); }} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600">Hapus</button>
+                      <button onClick={() => { if (confirm(`Hapus kategori "${c.name}"? Link di dalamnya akan menjadi tanpa kategori.`)) deleteCategory(c.id); }} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600">Hapus</button>
                     </>
                   )}
                 </div>
               ))}
+              {data.categories.length === 0 && <p className="text-sm text-slate-500">Belum ada kategori. Tambahkan kategori pertama Anda di bawah.</p>}
             </div>
             <div className="mt-5 border-t pt-4">
               <p className="text-sm font-semibold">Tambah Kategori Baru</p>

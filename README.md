@@ -2,10 +2,29 @@
 
 Platform terpusat untuk menyimpan dan menemukan kembali URL/link yang pernah dibagikan secara cepat. Target: waktu pencarian < 5 detik (pencarian real-time di aplikasi ini umumnya < 10 ms, ditampilkan langsung di UI).
 
+**Versi 2 — Akun + Database:** arsip kini tersimpan per akun di database (PostgreSQL/Neon) dan **sinkron antarperangkat**. Masuk dengan akun yang sama dari HP, laptop, atau perangkat apa pun — isinya selalu sama.
+
+## Fitur Akun (v2)
+
+- **Daftar / Masuk** dengan email + kata sandi (NextAuth v5, kata sandi di-hash bcrypt). Halaman: `/register` dan `/login`.
+- Akun baru langsung mendapat **5 kategori awal**: Umum, Pekerjaan, Belajar, Referensi, Hiburan (warna sama seperti v1).
+- Semua data (link & kategori) terikat ke akun pemiliknya — API menolak akses tanpa sesi (401) dan tidak pernah mencampur data antar akun.
+- **Migrasi arsip lokal v1:** bila di browser masih ada arsip dari versi localStorage lama (kunci `arsip-link-v1`), setelah masuk akan muncul banner *"Ada arsip lokal di perangkat ini — Impor ke akun"*. Sekali klik, arsip terunggah ke server (duplikat dilewati), lalu Anda ditawari menghapus salinan lokalnya.
+- Mode tamu (belum masuk) hanya menampilkan halaman sambutan + tombol Masuk/Daftar — tidak ada lagi penyimpanan localStorage agar sumber data tidak membingungkan.
+
 ## Cara Jalan Lokal
 
 ```bash
 npm install
+
+# Siapkan env (lihat .env.example — isi nilai asli hanya di .env.local / dashboard Vercel, JANGAN commit)
+#   DATABASE_URL  = connection string PostgreSQL (pooled)
+#   DIRECT_URL    = connection string langsung (non-pooled, untuk migrate/db push Prisma)
+#   AUTH_SECRET   = string acak kuat untuk NextAuth
+#   NEXTAUTH_URL  = URL aplikasi, mis. http://localhost:3000
+
+npx prisma generate
+npx prisma db push   # hanya bila database bisa dijangkau dari mesin ini
 npm run dev
 # buka http://localhost:3000
 
@@ -14,62 +33,62 @@ npm run build
 npm run start
 ```
 
+Di Vercel, migrasi skema dijalankan otomatis saat build (`vercel.json` → `buildCommand: npx prisma generate && npx prisma db push && next build`), karena tidak semua lingkungan bisa menjangkau database secara langsung.
+
 ## Stack
 
 - Next.js 15 + React 19 + TypeScript
 - Tailwind CSS v4 (`@tailwindcss/postcss`)
-- Persistensi: `localStorage` (kunci `arsip-link-v1`) — **tanpa login, tanpa database**
-
-## Catatan Persistensi (Jujur)
-
-Data tersimpan **per browser / per perangkat** di localStorage. Artinya:
-- Data tidak sinkron antarperangkat / antar-browser.
-- Membersihkan data browser akan menghapus arsip.
-- Gunakan **Ekspor JSON** secara berkala sebagai cadangan, dan **Impor JSON** untuk memulihkan / memindahkan data.
-
-## Data Contoh (Seed)
-
-Saat pertama kali dibuka (localStorage kosong), aplikasi terisi 5 link contoh nyata yang aman & umum:
-
-| URL | Kategori | Contoh Tag |
-|-----|----------|------------|
-| github.com | Pekerjaan | kode, git, kolaborasi |
-| developer.mozilla.org | Referensi | dokumentasi, web, javascript |
-| nextjs.org | Belajar | react, framework, tutorial |
-| tailwindcss.com | Belajar | css, desain, frontend |
-| kemdikbud.go.id | Umum | pemerintah, pendidikan, resmi |
-
-Kategori awal: **Umum, Pekerjaan, Belajar, Referensi, Hiburan** (masing-masing berwarna berbeda).
-Semua data contoh bisa dihapus per item (tombol Hapus), atau sekaligus lewat tombol "Hapus semua data" yang wajib konfirmasi dua langkah.
+- Auth: NextAuth v5 (Credentials, sesi JWT) + bcryptjs
+- Database: PostgreSQL (Neon) via Prisma ORM
+- Persistensi v1 (localStorage) digantikan penuh oleh database untuk pengguna yang masuk.
 
 ## Tabel Pemetaan Fitur PRD → Implementasi
 
 | # | Fitur PRD | Prioritas | Implementasi di Accank Arsip Link | Status |
 |---|-----------|-----------|---------------------------|--------|
 | 1 | Penyimpanan URL Cepat & Ekstraksi Metadata Otomatis | Must Have | `app/api/metadata/route.ts` — fetch server-side (timeout 8 dtk, User-Agent browser), parse `<title>`, meta description / `og:description`, `og:image`, favicon (`link rel=icon`, fallback Google S2 Favicons & `/favicon.ico`). Form: tempel URL → otomatis ambil info saat blur/paste + tombol "Ambil Info Otomatis" → pratinjau → bisa edit manual. Error ditangani anggun (tetap bisa simpan, judul = domain). | ✅ Selesai |
-| 2 | Kategori & Tagging Terstruktur | Must Have | Kategori berlabel warna (palet 8 warna: Emerald, Biru, Ungu, Merah Muda, Oranye, Kuning, Teal, Abu), bisa tambah/edit/hapus via "Kelola Kategori". Tag kustom via input koma. Seed 5 kategori. Chip kategori berwarna + tag di kartu. | ✅ Selesai |
-| 3 | Deteksi Tautan Duplikat | Should Have | Normalisasi URL di `lib/utils.ts` (`normalizeUrlStrict`: host lowercase, buang trailing slash, buang `utm_*`). Saat simpan, bila duplikat: peringatan jelas berisi link lama + pilihan **Batal / Tetap Simpan / Buka yang Lama**. Tidak pernah simpan diam-diam. | ✅ Selesai |
-| 4 | Pencarian Cerdas Real-time | Must Have | Input pencarian instan (tanpa tombol), filter judul, URL, domain, deskripsi, tag, kategori. Menampilkan **jumlah hasil + waktu pencarian (ms)**. | ✅ Selesai |
-| 5 | Filtering & Pengurutan Multi-Kriteria | Should Have | Filter: kategori, tag, domain, rentang waktu (Semua / Hari ini / 7 hari / 30 hari). Urutan: Terbaru, Terlama, Judul A–Z, Paling Sering Diakses. Plus filter Favorit. | ✅ Selesai |
-| 6 | CRUD Lengkap | Must Have | Tambah, lihat (mode **Grid / Daftar**), edit, hapus (modal konfirmasi), salin URL (clipboard + feedback), buka link (counter `clicks` naik + tab baru), favorit/pin (toggle bintang ★). | ✅ Selesai |
+| 2 | Kategori & Tagging Terstruktur | Must Have | Kategori berlabel warna (palet 8 warna: Emerald, Biru, Ungu, Merah Muda, Oranye, Kuning, Teal, Abu), bisa tambah/edit/hapus via "Kelola Kategori" (tersimpan di server per akun; menghapus kategori membuat link di dalamnya menjadi tanpa kategori). Tag kustom via input koma. Seed 5 kategori per akun baru. Chip kategori berwarna + tag di kartu. | ✅ Selesai |
+| 3 | Deteksi Tautan Duplikat | Should Have | Normalisasi URL di `lib/utils.ts` (`normalizeUrlStrict`: host lowercase, buang trailing slash, buang `utm_*`). Pemeriksaan duplikat kini ditegakkan **di server** per akun (respon 409 berisi link lama, kecuali `force=true`): peringatan jelas + pilihan **Batal / Tetap Simpan / Buka yang Lama**. Tidak pernah simpan diam-diam. | ✅ Selesai |
+| 4 | Pencarian Cerdas Real-time | Must Have | Input pencarian instan (tanpa tombol) di atas data akun yang dimuat dari server, filter judul, URL, domain, deskripsi, tag, kategori. Menampilkan **jumlah hasil + waktu pencarian (ms)**. | ✅ Selesai |
+| 5 | Filtering & Pengurutan Multi-Kriteria | Should Have | Filter: kategori (termasuk "Tanpa Kategori"), tag, domain, rentang waktu (Semua / Hari ini / 7 hari / 30 hari). Urutan: Terbaru, Terlama, Judul A–Z, Paling Sering Diakses. Plus filter Favorit. | ✅ Selesai |
+| 6 | CRUD Lengkap | Must Have | Tambah, lihat (mode **Grid / Daftar**), edit, hapus (modal konfirmasi), salin URL (clipboard + feedback), buka link (counter `clicks` naik di server + tab baru), favorit/pin (toggle bintang ★). Semua lewat API per akun. | ✅ Selesai |
 | 7 | Dashboard Statistik Ringkas | Should Have | Kartu di atas: total link, total kategori, total tag unik, link paling sering diakses, domain terbanyak. | ✅ Selesai |
-| 8 | Ekspor / Impor | Should Have | Ekspor **JSON** & **CSV** (tombol di header). Impor JSON dengan validasi sederhana, duplikat dilewati, laporan ringkasan (X ditambah, Y dilewati). | ✅ Selesai |
+| 8 | Ekspor / Impor | Should Have | Ekspor **JSON** & **CSV** dari data akun (tombol di header). Impor JSON lewat endpoint server `/api/links/import` — kategori dicocokkan per nama, duplikat dilewati, laporan ringkasan (X ditambah, Y dilewati). Endpoint yang sama dipakai untuk migrasi arsip lokal v1. | ✅ Selesai |
+| 9 | Akun & Sinkronisasi Antarperangkat (v2) | — | NextAuth v5 + Prisma + PostgreSQL (Neon). Model `User`, `Category`, `LinkItem` per user. API links/categories wajib sesi (401 tanpa login). | ✅ Selesai |
 
 ## Struktur Proyek
 
 ```
 app/
-  api/metadata/route.ts   # API ekstraksi metadata server-side
+  api/auth/[...nextauth]/route.ts  # Handler NextAuth
+  api/auth/register/route.ts       # Registrasi (+ seed 5 kategori per akun)
+  api/categories/route.ts          # GET/POST kategori milik user
+  api/categories/[id]/route.ts     # PATCH/DELETE kategori
+  api/links/route.ts               # GET/POST link (cek duplikat 409 di server)
+  api/links/[id]/route.ts          # PATCH (termasuk {click:true}) / DELETE link
+  api/links/import/route.ts        # Impor & migrasi arsip lokal → akun
+  api/metadata/route.ts            # API ekstraksi metadata server-side
+  login/page.tsx                   # Halaman masuk
+  register/page.tsx                # Halaman daftar
   globals.css
   layout.tsx
-  page.tsx                # UI utama (dashboard, pencarian, CRUD, kategori, impor/ekspor)
+  page.tsx                         # Sambutan (tamu) + UI utama berbasis API (sudah masuk)
+  providers.tsx                    # SessionProvider NextAuth
+auth.ts                            # NextAuth + provider Credentials (bcrypt)
+auth.config.ts                     # Konfigurasi edge-safe untuk middleware
+middleware.ts                      # Middleware sesi (edge-safe)
+prisma/schema.prisma               # User, Category, LinkItem
 lib/
-  types.ts                # Tipe Category, LinkItem, palet warna, STORAGE_KEY
-  utils.ts                # Normalisasi URL, domain, format tanggal ID/WITA
-  seed.ts                 # 5 kategori + 5 link contoh
+  prisma.ts                        # Singleton PrismaClient
+  session.ts                       # Helper requireUserId() untuk API
+  serialize.ts                     # Serialisasi model DB → bentuk UI
+  types.ts                         # Tipe Category, LinkItem, palet warna, STORAGE_KEY
+  utils.ts                         # Normalisasi URL, domain, format tanggal ID/WITA
+  seed.ts                          # Definisi 5 kategori awal per akun
 ```
 
 ## Target Pengguna & Performa (dari PRD)
 
-- Target waktu pencarian < 5 detik — tercapai jauh di bawahnya (pencarian client-side real-time, waktu terukur ditampilkan di UI).
-- Target skala PRD: 1.000 MAU — arsitektur localStorage cocok untuk penggunaan personal / per perangkat; untuk multi-user tersinkron dibutuhkan backend & login (di luar scope versi ini, sesuai keputusan persistensi tanpa login).
+- Target waktu pencarian < 5 detik — tercapai jauh di bawahnya (pencarian client-side real-time atas data akun, waktu terukur ditampilkan di UI).
+- Target skala PRD: 1.000 MAU — v2 dengan database terpusat per akun mendukung penggunaan multi-perangkat dan multi-pengguna; tiap akun terisolasi datanya.

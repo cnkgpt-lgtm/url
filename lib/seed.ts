@@ -1,6 +1,15 @@
 import type { AppData, Category, LinkItem } from "./types";
 import { normalizeUrlStrict, extractDomain, faviconForDomain } from "./utils";
 
+/** Definisi kategori awal (nama + warna) — dipakai saat registrasi user baru (v2, per akun). */
+export const SEED_CATEGORY_DEFS: { name: string; color: string }[] = [
+  { name: "Umum", color: "#64748b" },
+  { name: "Pekerjaan", color: "#2563eb" },
+  { name: "Belajar", color: "#059669" },
+  { name: "Referensi", color: "#7c3aed" },
+  { name: "Hiburan", color: "#db2777" },
+];
+
 export const SEED_CATEGORIES: Category[] = [
   { id: "cat-umum", name: "Umum", color: "#64748b" },
   { id: "cat-pekerjaan", name: "Pekerjaan", color: "#2563eb" },

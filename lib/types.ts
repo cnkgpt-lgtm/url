@@ -13,7 +13,7 @@ export interface LinkItem {
   image?: string;
   favicon: string;
   domain: string;
-  categoryId: string;
+  categoryId: string | null;
   tags: string[];
   clicks: number;
   favorite: boolean;
