@@ -92,3 +92,5 @@ lib/
 
 - Target waktu pencarian < 5 detik — tercapai jauh di bawahnya (pencarian client-side real-time atas data akun, waktu terukur ditampilkan di UI).
 - Target skala PRD: 1.000 MAU — v2 dengan database terpusat per akun mendukung penggunaan multi-perangkat dan multi-pengguna; tiap akun terisolasi datanya.
+
+<!-- Redeploy v2 dipicu 22 Okt 2026 setelah env var database terpasang. -->
