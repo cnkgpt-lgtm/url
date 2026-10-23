@@ -6,7 +6,7 @@ Platform terpusat untuk menyimpan dan menemukan kembali URL/link yang pernah dib
 
 ## Fitur Akun (v2)
 
-- **Daftar / Masuk** dengan email + kata sandi (NextAuth v5, kata sandi di-hash bcrypt). Halaman: `/register` dan `/login`. Kata sandi **minimal 6 karakter**.
+- **Daftar / Masuk** dengan **username + kata sandi** (tanpa email — NextAuth v5, kata sandi di-hash bcrypt). Halaman: `/register` dan `/login`. Username: 3–30 karakter huruf kecil, angka, titik, garis bawah, atau tanda hubung; disimpan selalu dalam huruf kecil dan harus unik. Kata sandi **minimal 6 karakter**.
 - **Ganti Kata Sandi:** user yang sudah masuk bisa mengganti sandinya sendiri lewat halaman `/ganti-sandi` (tautan "Ganti Sandi" di header, di samping tombol Keluar). Wajib mengisi kata sandi lama dengan benar — diverifikasi di server dengan bcrypt (`POST /api/account/password`, 401 tanpa sesi, 400 bila sandi lama salah atau sandi baru < 6 karakter).
 - Akun baru langsung mendapat **5 kategori awal**: Umum, Pekerjaan, Belajar, Referensi, Hiburan (warna sama seperti v1).
 - Semua data (link & kategori) terikat ke akun pemiliknya — API menolak akses tanpa sesi (401) dan tidak pernah mencampur data antar akun.
@@ -20,13 +20,22 @@ Aplikasi memiliki dua role:
 - **Master** — pemilik/pengelola. Bisa membuka halaman **Kelola User** (`/master`) untuk melihat semua akun terdaftar dan **menghapus akun** (beserta seluruh arsip link & kategorinya).
 - **User** — pengguna biasa dengan arsip link miliknya sendiri.
 
-**Tidak ada lagi sistem persetujuan (approval):** pendaftaran di `/register` membuat akun dengan role `USER` yang **langsung aktif** — user bisa langsung masuk setelah daftar, tanpa menunggu disetujui Master. Login hanya memeriksa email + kata sandi; nilai `status` lama di database tidak lagi dipakai untuk memblokir siapa pun (akun yang dulu terlanjur berstatus `PENDING` tetap bisa masuk).
+**Tidak ada lagi sistem persetujuan (approval):** pendaftaran di `/register` membuat akun dengan role `USER` yang **langsung aktif** — user bisa langsung masuk setelah daftar, tanpa menunggu disetujui Master. Login hanya memeriksa username + kata sandi; nilai `status` lama di database tidak lagi dipakai untuk memblokir siapa pun (akun yang dulu terlanjur berstatus `PENDING` tetap bisa masuk).
 
 Master tidak dapat menghapus akunnya sendiri (tombol Hapus tidak tampil untuk baris dirinya, dan API menolaknya dengan 400).
 
-**Akun Master pertama:** ditentukan lewat environment variable **`MASTER_EMAIL`**. Pendaftar yang mendaftar dengan email yang sama persis (tidak peka huruf besar/kecil) dengan nilai env ini otomatis menjadi role `MASTER`.
+**Akun Master:** ditentukan lewat environment variable **`MASTER_USERNAME`** (bawaan: `ahsan`). Pendaftar yang mendaftar dengan username yang sama dengan nilai env ini otomatis menjadi role `MASTER`.
 
-Di database: `User.role` (`MASTER` | `USER`). Kolom `User.status` masih ada di skema (warisan versi persetujuan) tetapi tidak lagi dipakai untuk memblokir login. Role ikut terbawa di sesi JWT, dan semua endpoint `/api/master/*` memeriksa role di server (403 untuk bukan Master).
+**Akun bawaan yang sudah dibuat:**
+
+| Username | Nama | Role |
+|----------|------|------|
+| `ahsan` | Ahsan | MASTER |
+| `akademik` | Akademik | USER |
+
+Akun lama dari era login-email diberi username secara otomatis saat build oleh `scripts/backfill-usernames.mjs` (idempoten; memetakan akun lama `master@accank.id` → `ahsan` dan `akademik@unibos.ac.id` → `akademik`). Kolom `email` masih ada di database hanya sebagai warisan internal (akun baru diisi `${username}@user.local`) — tidak dipakai untuk login dan tidak ditampilkan di UI mana pun.
+
+Di database: `User.username` (unik) + `User.role` (`MASTER` | `USER`). Kolom `User.status` masih ada di skema (warisan versi persetujuan) tetapi tidak lagi dipakai untuk memblokir login. Username & role ikut terbawa di sesi JWT, dan semua endpoint `/api/master/*` memeriksa role di server (403 untuk bukan Master).
 
 ## Cara Jalan Lokal
 
@@ -38,7 +47,7 @@ npm install
 #   DIRECT_URL    = connection string langsung (non-pooled, untuk migrate/db push Prisma)
 #   AUTH_SECRET   = string acak kuat untuk NextAuth
 #   NEXTAUTH_URL  = URL aplikasi, mis. http://localhost:3000
-#   MASTER_EMAIL  = email akun Master pertama (pendaftar email ini = role MASTER)
+#   MASTER_USERNAME = username akun Master (pendaftar username ini = role MASTER; bawaan: ahsan)
 
 npx prisma generate
 npx prisma db push   # hanya bila database bisa dijangkau dari mesin ini
@@ -50,7 +59,7 @@ npm run build
 npm run start
 ```
 
-Di Vercel, migrasi skema dijalankan otomatis saat build (`vercel.json` → `buildCommand: npx prisma generate && npx prisma db push && next build`), karena tidak semua lingkungan bisa menjangkau database secara langsung.
+Di Vercel, migrasi skema dijalankan otomatis saat build (`vercel.json` → `buildCommand: npx prisma generate && npx prisma db push && node scripts/backfill-usernames.mjs && next build`), karena tidak semua lingkungan bisa menjangkau database secara langsung. Langkah `backfill-usernames` mengisi username akun lama dan tidak pernah menggagalkan build bila gagal.
 
 ## Stack
 
@@ -73,7 +82,8 @@ Di Vercel, migrasi skema dijalankan otomatis saat build (`vercel.json` → `buil
 | 7 | Dashboard Statistik Ringkas | Should Have | Kartu di atas: total link, total kategori, total tag unik, link paling sering diakses, domain terbanyak. | ✅ Selesai |
 | 8 | Ekspor / Impor | Should Have | Ekspor **JSON** & **CSV** dari data akun (tombol di header). Impor JSON lewat endpoint server `/api/links/import` — kategori dicocokkan per nama, duplikat dilewati, laporan ringkasan (X ditambah, Y dilewati). Endpoint yang sama dipakai untuk migrasi arsip lokal v1. | ✅ Selesai |
 | 9 | Akun & Sinkronisasi Antarperangkat (v2) | — | NextAuth v5 + Prisma + PostgreSQL (Neon). Model `User`, `Category`, `LinkItem` per user. API links/categories wajib sesi (401 tanpa login). | ✅ Selesai |
-| 10 | Role Master & User (v2.1, disederhanakan v2.3) | — | `User.role` (`MASTER`/`USER`). **Tanpa persetujuan:** register baru langsung aktif & bisa langsung masuk (kecuali email = env `MASTER_EMAIL` → role MASTER). Halaman `/master` (**Kelola User**) + API `/api/master/users` untuk melihat dan menghapus akun beserta datanya. | ✅ Selesai |
+| 10 | Role Master & User (v2.1, disederhanakan v2.3) | — | `User.role` (`MASTER`/`USER`). **Tanpa persetujuan:** register baru langsung aktif & bisa langsung masuk (kecuali username = env `MASTER_USERNAME` → role MASTER). Halaman `/master` (**Kelola User**) + API `/api/master/users` untuk melihat dan menghapus akun beserta datanya. | ✅ Selesai |
+| 12 | Login Username (v2.4) | — | Login & daftar hanya memakai **username** (tanpa email): kolom `User.username` unik (lowercase), Credentials NextAuth by username, UI login/register/header/Kelola User menampilkan username. Akun lama di-backfill username saat build (`scripts/backfill-usernames.mjs`): `ahsan` (Master) & `akademik` (User). | ✅ Selesai |
 | 11 | Ganti Kata Sandi (v2.2) | — | Halaman `/ganti-sandi` + `POST /api/account/password`. Wajib sesi (401), sandi lama diverifikasi bcrypt, sandi baru min. 6 karakter. Tautan "Ganti Sandi" di header halaman utama & `/master`. | ✅ Selesai |
 
 ## Struktur Proyek
@@ -102,7 +112,8 @@ app/
 auth.ts                            # NextAuth + provider Credentials (bcrypt)
 auth.config.ts                     # Konfigurasi edge-safe untuk middleware
 middleware.ts                      # Middleware sesi (edge-safe)
-prisma/schema.prisma               # User (role + status), Category, LinkItem
+prisma/schema.prisma               # User (username + role + status), Category, LinkItem
+scripts/backfill-usernames.mjs     # Backfill username akun lama saat build (idempoten, non-fatal)
 lib/
   prisma.ts                        # Singleton PrismaClient
   session.ts                       # Helper requireUserId() / getSessionUser() / requireMaster() untuk API

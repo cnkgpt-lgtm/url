@@ -8,16 +8,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
-      name: "Email",
+      name: "Username",
       credentials: {
-        email: { label: "Email", type: "email" },
+        username: { label: "Username", type: "text" },
         password: { label: "Kata sandi", type: "password" },
       },
       async authorize(creds) {
-        const email = String(creds?.email ?? "").toLowerCase().trim();
+        const username = String(creds?.username ?? "").toLowerCase().trim();
         const password = String(creds?.password ?? "");
-        if (!email || !password) return null;
-        const user = await prisma.user.findUnique({ where: { email } });
+        if (!username || !password) return null;
+        const user = await prisma.user.findUnique({ where: { username } });
         if (!user) return null;
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
@@ -25,7 +25,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // benar selalu bisa masuk, apa pun nilai status lama di database.
         return {
           id: user.id,
-          email: user.email,
+          username: user.username,
           name: user.name,
           role: user.role,
           status: user.status,

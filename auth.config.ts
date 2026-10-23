@@ -14,16 +14,18 @@ export const authConfig: NextAuthConfig = {
       const t = token as unknown as Record<string, unknown>;
       if (user?.id) t.uid = user.id;
       if (user) {
-        const u = user as { role?: string; status?: string };
+        const u = user as { username?: string | null; role?: string; status?: string };
+        if (u.username) t.username = u.username;
         if (u.role) t.role = u.role;
         if (u.status) t.status = u.status;
       }
       return token;
     },
     async session({ session, token }) {
-      const t = token as unknown as { uid?: string; role?: string; status?: string };
+      const t = token as unknown as { uid?: string; username?: string | null; role?: string; status?: string };
       if (session.user) {
         if (t.uid) session.user.id = t.uid;
+        if (t.username) session.user.username = t.username;
         if (t.role) session.user.role = t.role;
         if (t.status) session.user.status = t.status;
       }

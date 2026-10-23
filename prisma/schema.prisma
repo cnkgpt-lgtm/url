@@ -23,6 +23,12 @@ enum UserStatus {
 model User {
   id           String     @id @default(cuid())
   name         String?
+  // Identitas login utama sejak v2.4: username (unik, lowercase).
+  // Nullable agar akun lama (pra-username) tetap valid; diisi oleh
+  // scripts/backfill-usernames.mjs untuk akun lama & saat daftar untuk akun baru.
+  username     String?    @unique
+  // Email hanya warisan internal (diisi `${username}@user.local` untuk akun baru);
+  // tidak lagi dipakai untuk login dan tidak ditampilkan di UI mana pun.
   email        String     @unique
   passwordHash String
   // Kolom warisan dari versi persetujuan (approval): sudah TIDAK dipakai untuk

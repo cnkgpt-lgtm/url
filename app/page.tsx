@@ -45,7 +45,7 @@ export default function Home() {
   return (
     <ArchiveApp
       userName={session.user.name || ""}
-      userEmail={session.user.email || ""}
+      userUsername={(session.user as { username?: string | null }).username || ""}
       userRole={(session.user as { role?: string }).role || "USER"}
     />
   );
@@ -124,7 +124,7 @@ function Welcome() {
   );
 }
 
-function ArchiveApp({ userName, userEmail, userRole }: { userName: string; userEmail: string; userRole: string }) {
+function ArchiveApp({ userName, userUsername, userRole }: { userName: string; userUsername: string; userRole: string }) {
   const isMaster = userRole === "MASTER";
   const [data, setData] = useState<AppData>({ links: [], categories: [] });
   const [loaded, setLoaded] = useState(false);
@@ -663,7 +663,7 @@ function ArchiveApp({ userName, userEmail, userRole }: { userName: string; userE
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <div className="mr-1 hidden text-right sm:block">
               <p className="flex items-center justify-end gap-2 text-sm font-semibold leading-tight text-slate-900">
-                {userName || userEmail}
+                {userName || userUsername}
                 <span
                   className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                     isMaster
@@ -674,7 +674,7 @@ function ArchiveApp({ userName, userEmail, userRole }: { userName: string; userE
                   {isMaster ? "Master" : "User"}
                 </span>
               </p>
-              <p className="text-xs leading-tight text-slate-500">{userEmail}</p>
+              <p className="text-xs leading-tight text-slate-500">@{userUsername}</p>
             </div>
             {isMaster && (
               <NextLink

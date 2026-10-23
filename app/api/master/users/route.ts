@@ -19,7 +19,7 @@ export async function GET() {
     select: {
       id: true,
       name: true,
-      email: true,
+      username: true,
       role: true,
       status: true,
       createdAt: true,
@@ -32,7 +32,7 @@ export async function GET() {
     users: users.map((u) => ({
       id: u.id,
       name: u.name,
-      email: u.email,
+      username: u.username,
       role: u.role,
       status: u.status,
       createdAt: u.createdAt.toISOString(),

@@ -29,7 +29,10 @@ export async function DELETE(_req: Request, { params }: Params) {
     );
 
   try {
-    const target = await prisma.user.findUnique({ where: { id }, select: { id: true, email: true } });
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, username: true, name: true },
+    });
     if (!target)
       return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
 
@@ -39,7 +42,7 @@ export async function DELETE(_req: Request, { params }: Params) {
       prisma.user.delete({ where: { id } }),
     ]);
 
-    return NextResponse.json({ ok: true, deletedEmail: target.email });
+    return NextResponse.json({ ok: true, deletedUsername: target.username, deletedName: target.name });
   } catch {
     return NextResponse.json({ error: "Gagal menghapus user." }, { status: 500 });
   }

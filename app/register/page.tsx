@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [username, setUsername] = useState("");
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,7 +20,7 @@ export default function RegisterPage() {
       const r = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ username, name, password }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Gagal mendaftar.");
@@ -58,25 +58,27 @@ export default function RegisterPage() {
 
         <form onSubmit={submit} className="mt-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700">Nama</label>
+            <label className="block text-sm font-medium text-slate-700">Username</label>
+            <input
+              type="text"
+              name="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              autoComplete="username"
+              placeholder="mis. ahsan (huruf kecil, 3–30 karakter)"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            />
+            <p className="mt-1 text-xs text-slate-400">Dipakai untuk masuk. Huruf kecil, angka, titik, garis bawah, atau tanda hubung.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Nama lengkap <span className="font-normal text-slate-400">(opsional)</span></label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="name"
               placeholder="Nama Anda"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              placeholder="nama@email.com"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             />
           </div>

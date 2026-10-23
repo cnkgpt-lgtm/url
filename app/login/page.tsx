@@ -10,7 +10,7 @@ type Msg = { kind: "error" | "warn" | "ok"; text: string };
 function LoginForm() {
   const router = useRouter();
   const sp = useSearchParams();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<Msg | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,10 +29,10 @@ function LoginForm() {
     e.preventDefault();
     setMsg(null);
     setBusy(true);
-    const res = await signIn("credentials", { email, password, redirect: false });
+    const res = await signIn("credentials", { username, password, redirect: false });
     setBusy(false);
     if (res?.error) {
-      setMsg({ kind: "error", text: "Email atau kata sandi salah. Silakan coba lagi." });
+      setMsg({ kind: "error", text: "Username atau kata sandi salah. Silakan coba lagi." });
       return;
     }
     router.push(sp.get("callbackUrl") || "/");
@@ -72,14 +72,15 @@ function LoginForm() {
 
         <form onSubmit={submit} className="mt-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700">Email</label>
+            <label className="block text-sm font-medium text-slate-700">Username</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              name="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
-              autoComplete="email"
-              placeholder="nama@email.com"
+              autoComplete="username"
+              placeholder="Username Anda"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             />
           </div>

@@ -9,7 +9,7 @@ import { formatDateID } from "@/lib/utils";
 interface MasterUser {
   id: string;
   name: string | null;
-  email: string;
+  username: string | null;
   role: "MASTER" | "USER";
   status?: string;
   createdAt: string;
@@ -51,8 +51,9 @@ export default function MasterPage() {
   }, [role, loadUsers]);
 
   async function deleteUser(u: MasterUser) {
+    const label = u.username ? `@${u.username}` : "(tanpa username)";
     const ok = window.confirm(
-      `Hapus akun ${u.name || u.email} (${u.email})?\n\n` +
+      `Hapus akun ${u.name || label} (${label})?\n\n` +
         `Seluruh arsip link (${u.linkCount} link) dan kategori milik akun ini akan ikut terhapus dan tidak bisa dikembalikan.`
     );
     if (!ok) return;
@@ -63,7 +64,7 @@ export default function MasterPage() {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Gagal menghapus user.");
       setUsers((prev) => prev.filter((x) => x.id !== u.id));
-      setActionMsg(`🗑️ Akun ${u.email} beserta datanya sudah dihapus.`);
+      setActionMsg(`🗑️ Akun ${u.username ? "@" + u.username : u.name || ""} beserta datanya sudah dihapus.`);
     } catch (e) {
       setActionMsg(e instanceof Error ? e.message : "Gagal menghapus user.");
     } finally {
@@ -185,7 +186,7 @@ export default function MasterPage() {
                       </span>
                       {isSelf && <span className="text-[11px] font-medium text-slate-400">(akun Anda)</span>}
                     </div>
-                    <p className="truncate text-sm text-slate-600">{u.email}</p>
+                    <p className="truncate text-sm text-slate-600">{u.username ? `@${u.username}` : "(belum ada username)"}</p>
                     <p className="text-xs text-slate-400">
                       Daftar: {formatDateID(u.createdAt)} • {u.linkCount} link tersimpan
                     </p>
