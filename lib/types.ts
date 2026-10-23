@@ -17,6 +17,11 @@ export interface LinkItem {
   tags: string[];
   clicks: number;
   favorite: boolean;
+  // Pemilik link (diisi GET /api/links dari relasi user). Untuk Master, link
+  // user lain ikut tampil lengkap dengan pemiliknya; untuk User biasa
+  // nilainya selalu dirinya sendiri.
+  ownerName?: string | null;
+  ownerUsername?: string | null;
   createdAt: string; // ISO
   updatedAt: string; // ISO
 }

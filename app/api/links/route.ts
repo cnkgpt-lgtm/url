@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId } from "@/lib/session";
+import { getSessionUser, requireUserId } from "@/lib/session";
 import { serializeLink } from "@/lib/serialize";
 import { ensureUrl, extractDomain, faviconForDomain, normalizeUrlStrict } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const userId = await requireUserId();
-  if (!userId)
+  const me = await getSessionUser();
+  if (!me)
     return NextResponse.json({ error: "Silakan masuk terlebih dahulu." }, { status: 401 });
-  const links = await prisma.linkItem.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
+  // Master melihat link SEMUA user; User biasa hanya miliknya sendiri.
+  // Keduanya menyertakan pemilik tiap link (ownerName/ownerUsername).
+  const include = { user: { select: { name: true, username: true } } } as const;
+  const orderBy = { createdAt: "desc" } as const;
+  const links =
+    me.role === "MASTER"
+      ? await prisma.linkItem.findMany({ orderBy, include })
+      : await prisma.linkItem.findMany({ where: { userId: me.id }, orderBy, include });
   return NextResponse.json({ links: links.map(serializeLink) });
 }
 

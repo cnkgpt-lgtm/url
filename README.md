@@ -9,7 +9,7 @@ Platform terpusat untuk menyimpan dan menemukan kembali URL/link yang pernah dib
 - **Daftar / Masuk** dengan **username + kata sandi** (tanpa email — NextAuth v5, kata sandi di-hash bcrypt). Halaman: `/register` dan `/login`. Username: 3–30 karakter huruf kecil, angka, titik, garis bawah, atau tanda hubung; disimpan selalu dalam huruf kecil dan harus unik. Kata sandi **minimal 6 karakter**.
 - **Ganti Kata Sandi:** user yang sudah masuk bisa mengganti sandinya sendiri lewat halaman `/ganti-sandi` (tautan "Ganti Sandi" di header, di samping tombol Keluar). Wajib mengisi kata sandi lama dengan benar — diverifikasi di server dengan bcrypt (`POST /api/account/password`, 401 tanpa sesi, 400 bila sandi lama salah atau sandi baru < 6 karakter).
 - Akun baru langsung mendapat **5 kategori awal**: Umum, Pekerjaan, Belajar, Referensi, Hiburan (warna sama seperti v1).
-- Semua data (link & kategori) terikat ke akun pemiliknya — API menolak akses tanpa sesi (401) dan tidak pernah mencampur data antar akun.
+- Semua data (link & kategori) terikat ke akun pemiliknya — API menolak akses tanpa sesi (401) dan tidak pernah mencampur data antar akun. Satu-satunya pengecualian: role **Master dapat MELIHAT link semua user** (lihat bagian Role di bawah) — melihat saja, tanpa bisa mengubah atau menghapus link orang lain.
 - **Migrasi arsip lokal v1:** bila di browser masih ada arsip dari versi localStorage lama (kunci `arsip-link-v1`), setelah masuk akan muncul banner *"Ada arsip lokal di perangkat ini — Impor ke akun"*. Sekali klik, arsip terunggah ke server (duplikat dilewati), lalu Anda ditawari menghapus salinan lokalnya.
 - Mode tamu (belum masuk) hanya menampilkan halaman sambutan + tombol Masuk/Daftar — tidak ada lagi penyimpanan localStorage agar sumber data tidak membingungkan.
 
@@ -23,6 +23,10 @@ Aplikasi memiliki dua role:
 **Tidak ada lagi sistem persetujuan (approval):** pendaftaran di `/register` membuat akun dengan role `USER` yang **langsung aktif** — user bisa langsung masuk setelah daftar, tanpa menunggu disetujui Master. Login hanya memeriksa username + kata sandi; nilai `status` lama di database tidak lagi dipakai untuk memblokir siapa pun (akun yang dulu terlanjur berstatus `PENDING` tetap bisa masuk).
 
 Master tidak dapat menghapus akunnya sendiri (tombol Hapus tidak tampil untuk baris dirinya, dan API menolaknya dengan 400).
+
+**Master melihat arsip link semua user (v2.5):** di halaman utama, Master melihat arsip link dari **semua user**, bukan hanya miliknya sendiri — `GET /api/links` mengembalikan seluruh link (urut terbaru) khusus untuk role `MASTER`, dan tiap link dilengkapi data pemiliknya (`ownerName` + `ownerUsername` dari relasi user). Di UI, link milik orang lain tampil dengan **lencana pemilik** "👤 Nama (@username)", dan bila ada lebih dari satu pemilik muncul filter tambahan **Pemilik** (Semua Pemilik / per username) yang bekerja bersama pencarian serta filter kategori/tag/domain/rentang waktu yang sudah ada; statistik dashboard Master pun dihitung dari seluruh link. **User biasa tidak berubah:** hanya melihat arsip miliknya sendiri (field pemilik pada responnya berisi dirinya sendiri).
+
+Melihat bukan berarti bisa mengubah: **tambah link tetap untuk akun sendiri, dan edit/hapus/favorit/counter klik tetap hanya berlaku untuk link milik sendiri** — tombol Edit/Hapus/bintang tidak tampil pada link orang lain, dan API `PATCH`/`DELETE /api/links/[id]` tetap menolak link bukan milik pemanggil dengan 404.
 
 **Akun Master:** ditentukan lewat environment variable **`MASTER_USERNAME`** (bawaan: `ahsan`). Pendaftar yang mendaftar dengan username yang sama dengan nilai env ini otomatis menjadi role `MASTER`.
 
@@ -84,6 +88,7 @@ Di Vercel, migrasi skema dijalankan otomatis saat build (`vercel.json` → `buil
 | 9 | Akun & Sinkronisasi Antarperangkat (v2) | — | NextAuth v5 + Prisma + PostgreSQL (Neon). Model `User`, `Category`, `LinkItem` per user. API links/categories wajib sesi (401 tanpa login). | ✅ Selesai |
 | 10 | Role Master & User (v2.1, disederhanakan v2.3) | — | `User.role` (`MASTER`/`USER`). **Tanpa persetujuan:** register baru langsung aktif & bisa langsung masuk (kecuali username = env `MASTER_USERNAME` → role MASTER). Halaman `/master` (**Kelola User**) + API `/api/master/users` untuk melihat dan menghapus akun beserta datanya. | ✅ Selesai |
 | 12 | Login Username (v2.4) | — | Login & daftar hanya memakai **username** (tanpa email): kolom `User.username` unik (lowercase), Credentials NextAuth by username, UI login/register/header/Kelola User menampilkan username. Akun lama di-backfill username saat build (`scripts/backfill-usernames.mjs`): `ahsan` (Master) & `akademik` (User). | ✅ Selesai |
+| 13 | Master Melihat Arsip Semua User (v2.5) | — | `GET /api/links` bercabang per role sesi: `MASTER` → semua link semua user + `ownerName`/`ownerUsername`; `USER` → hanya miliknya. UI: lencana pemilik 👤 Nama (@username) pada link orang lain, filter **Pemilik** khusus Master bila pemilik > 1, statistik mengikuti seluruh data. POST/PATCH/DELETE tetap per pemilik (404 untuk link orang lain). | ✅ Selesai |
 | 11 | Ganti Kata Sandi (v2.2) | — | Halaman `/ganti-sandi` + `POST /api/account/password`. Wajib sesi (401), sandi lama diverifikasi bcrypt, sandi baru min. 6 karakter. Tautan "Ganti Sandi" di header halaman utama & `/master`. | ✅ Selesai |
 
 ## Struktur Proyek
@@ -94,7 +99,7 @@ app/
   api/auth/register/route.ts       # Registrasi (+ seed 5 kategori per akun)
   api/categories/route.ts          # GET/POST kategori milik user
   api/categories/[id]/route.ts     # PATCH/DELETE kategori
-  api/links/route.ts               # GET/POST link (cek duplikat 409 di server)
+  api/links/route.ts               # GET link (Master: semua user + info pemilik; User: milik sendiri) / POST link (cek duplikat 409 di server)
   api/links/[id]/route.ts          # PATCH (termasuk {click:true}) / DELETE link
   api/links/import/route.ts        # Impor & migrasi arsip lokal → akun
   api/metadata/route.ts            # API ekstraksi metadata server-side

@@ -27,6 +27,18 @@ interface MetadataResult {
   warning?: string;
 }
 
+/** Kunci identitas pemilik link (username paling stabil; fallback ke nama). */
+function ownerKeyOf(l: LinkItem): string {
+  return l.ownerUsername || l.ownerName || "";
+}
+
+/** Label pemilik untuk lencana & filter Pemilik, mis. "Akademik (@akademik)". */
+function ownerLabelOf(l: LinkItem): string {
+  if (l.ownerName && l.ownerUsername) return `${l.ownerName} (@${l.ownerUsername})`;
+  if (l.ownerUsername) return `@${l.ownerUsername}`;
+  return l.ownerName || "Pengguna lain";
+}
+
 export default function Home() {
   const { data: session, status } = useSession();
 
@@ -126,6 +138,15 @@ function Welcome() {
 
 function ArchiveApp({ userName, userUsername, userRole }: { userName: string; userUsername: string; userRole: string }) {
   const isMaster = userRole === "MASTER";
+  const myOwnerKey = userUsername || userName;
+  // Link tanpa info pemilik (mis. baru dibuat lewat POST) dianggap milik sendiri.
+  const isMine = useCallback(
+    (l: LinkItem) => {
+      const key = ownerKeyOf(l);
+      return !key || key === myOwnerKey;
+    },
+    [myOwnerKey]
+  );
   const [data, setData] = useState<AppData>({ links: [], categories: [] });
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -141,6 +162,7 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterTag, setFilterTag] = useState<string>("all");
   const [filterDomain, setFilterDomain] = useState<string>("all");
+  const [filterOwner, setFilterOwner] = useState<string>("all");
   const [filterRange, setFilterRange] = useState<RangeKey>("all");
   const [sort, setSort] = useState<SortKey>("newest");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -270,6 +292,23 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
     return Array.from(s).sort();
   }, [data.links]);
 
+  // Daftar pemilik unik dari link yang termuat (untuk filter Pemilik khusus Master)
+  const allOwners = useMemo(() => {
+    const map = new Map<string, { key: string; label: string }>();
+    data.links.forEach((l) => {
+      const key = ownerKeyOf(l);
+      if (key && !map.has(key)) map.set(key, { key, label: ownerLabelOf(l) });
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "id"));
+  }, [data.links]);
+
+  const showOwnerFilter = isMaster && allOwners.length > 1;
+
+  // Bila pemilik yang sedang dipilih sudah tidak ada di data, kembalikan ke "all"
+  useEffect(() => {
+    if (filterOwner !== "all" && !allOwners.some((o) => o.key === filterOwner)) setFilterOwner("all");
+  }, [allOwners, filterOwner]);
+
   const stats = useMemo(() => {
     const totalLinks = data.links.length;
     const totalCategories = data.categories.length;
@@ -297,6 +336,7 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
     else if (filterCategory !== "all") result = result.filter((l) => l.categoryId === filterCategory);
     if (filterTag !== "all") result = result.filter((l) => l.tags.includes(filterTag));
     if (filterDomain !== "all") result = result.filter((l) => l.domain === filterDomain);
+    if (isMaster && filterOwner !== "all") result = result.filter((l) => ownerKeyOf(l) === filterOwner);
     if (filterRange !== "all") {
       const now = Date.now();
       const day = 24 * 60 * 60 * 1000;
@@ -319,6 +359,8 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
           l.domain.toLowerCase().includes(q) ||
           l.description.toLowerCase().includes(q) ||
           l.tags.some((t) => t.toLowerCase().includes(q)) ||
+          (l.ownerUsername || "").toLowerCase().includes(q) ||
+          (l.ownerName || "").toLowerCase().includes(q) ||
           catName.includes(q)
         );
       });
@@ -332,7 +374,11 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
     const elapsed = performance.now() - start;
     queueMicrotask(() => setSearchMs(Math.round(elapsed * 10) / 10));
     return result;
-  }, [data.links, search, filterCategory, filterTag, filterDomain, filterRange, sort, categoriesById, showFavoritesOnly]);
+  }, [data.links, search, filterCategory, filterTag, filterDomain, filterOwner, filterRange, sort, categoriesById, showFavoritesOnly, isMaster]);
+
+  // Link milik akun yang sedang masuk (untuk aksi ubah/hapus & zona berbahaya).
+  // Untuk User biasa ini sama dengan seluruh data.links.
+  const ownLinks = useMemo(() => data.links.filter(isMine), [data.links, isMine]);
 
   // --- Metadata fetch ---
   async function fetchMetadata(url: string) {
@@ -454,11 +500,16 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
   }
 
   async function handleOpen(item: LinkItem) {
-    setData((prev) => ({
-      ...prev,
-      links: prev.links.map((l) => (l.id === item.id ? { ...l, clicks: l.clicks + 1 } : l)),
-    }));
+    const mine = isMine(item);
+    if (mine) {
+      setData((prev) => ({
+        ...prev,
+        links: prev.links.map((l) => (l.id === item.id ? { ...l, clicks: l.clicks + 1 } : l)),
+      }));
+    }
     window.open(item.url, "_blank", "noopener,noreferrer");
+    // Counter akses hanya berlaku untuk link milik sendiri (server menolak link orang lain)
+    if (!mine) return;
     try {
       const res = await fetch(`/api/links/${item.id}`, {
         method: "PATCH",
@@ -495,6 +546,7 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
   }
 
   async function toggleFavorite(item: LinkItem) {
+    if (!isMine(item)) return; // favorit hanya bisa diubah pada link milik sendiri
     try {
       const res = await fetch(`/api/links/${item.id}`, {
         method: "PATCH",
@@ -629,8 +681,11 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
     }
     setClearing(true);
     try {
-      await Promise.all(data.links.map((l) => fetch(`/api/links/${l.id}`, { method: "DELETE" })));
-      setData((prev) => ({ ...prev, links: [] }));
+      // Hanya link milik sendiri yang dihapus — untuk Master, link user lain
+      // yang sedang tampil TIDAK ikut terhapus (server pun menolaknya).
+      const ownIds = new Set(ownLinks.map((l) => l.id));
+      await Promise.all(ownLinks.map((l) => fetch(`/api/links/${l.id}`, { method: "DELETE" })));
+      setData((prev) => ({ ...prev, links: prev.links.filter((l) => !ownIds.has(l.id)) }));
     } catch {
       setImportMsg("Sebagian link gagal dihapus. Muat ulang halaman untuk memeriksa.");
       await loadData();
@@ -828,6 +883,14 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                 <option key={d} value={d}>{d}</option>
               ))}
             </select>
+            {showOwnerFilter && (
+              <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
+                <option value="all">Semua Pemilik</option>
+                {allOwners.map((o) => (
+                  <option key={o.key} value={o.key}>{o.label}</option>
+                ))}
+              </select>
+            )}
             <select value={filterRange} onChange={(e) => setFilterRange(e.target.value as RangeKey)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
               <option value="all">Semua Waktu</option>
               <option value="today">Hari Ini</option>
@@ -885,9 +948,9 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
             <button onClick={openAdd} className="mt-6 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
               + Tambah Link Pertama
             </button>
-            {(search || filterCategory !== "all" || filterTag !== "all") && data.links.length > 0 && (
+            {(search || filterCategory !== "all" || filterTag !== "all" || filterDomain !== "all" || filterRange !== "all" || filterOwner !== "all") && data.links.length > 0 && (
               <button
-                onClick={() => { setSearch(""); setFilterCategory("all"); setFilterTag("all"); setFilterDomain("all"); setFilterRange("all"); }}
+                onClick={() => { setSearch(""); setFilterCategory("all"); setFilterTag("all"); setFilterDomain("all"); setFilterRange("all"); setFilterOwner("all"); }}
                 className="ml-2 mt-6 rounded-lg border border-slate-300 px-5 py-2.5 text-sm"
               >
                 Reset Filter
@@ -907,9 +970,13 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                       <h3 className="line-clamp-2 font-semibold leading-snug text-slate-900">{item.title}</h3>
                       <p className="truncate text-xs text-emerald-700">{item.domain}</p>
                     </div>
-                    <button onClick={() => toggleFavorite(item)} title="Favorit" className={`text-lg ${item.favorite ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}`}>
-                      {item.favorite ? "★" : "☆"}
-                    </button>
+                    {isMine(item) ? (
+                      <button onClick={() => toggleFavorite(item)} title="Favorit" className={`text-lg ${item.favorite ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}`}>
+                        {item.favorite ? "★" : "☆"}
+                      </button>
+                    ) : item.favorite ? (
+                      <span className="text-lg text-amber-500" title="Favorit pemiliknya">★</span>
+                    ) : null}
                   </div>
                   {item.description && <p className="line-clamp-2 mt-3 text-sm text-slate-600">{item.description}</p>}
                   {item.image && (
@@ -917,6 +984,11 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                     <img src={item.image} alt="" className="mt-3 h-32 w-full rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                   )}
                   <div className="mt-3 flex flex-wrap gap-1.5">
+                    {!isMine(item) && (
+                      <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-700">
+                        👤 {ownerLabelOf(item)}
+                      </span>
+                    )}
                     {cat && (
                       <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white" style={{ backgroundColor: cat.color }}>{cat.name}</span>
                     )}
@@ -930,8 +1002,12 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                   <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
                     <button onClick={() => handleOpen(item)} className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Buka ↗</button>
                     <button onClick={() => handleCopy(item)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">{copiedId === item.id ? "Tersalin ✓" : "Salin"}</button>
-                    <button onClick={() => openEdit(item)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Edit</button>
-                    <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50">Hapus</button>
+                    {isMine(item) && (
+                      <>
+                        <button onClick={() => openEdit(item)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Edit</button>
+                        <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50">Hapus</button>
+                      </>
+                    )}
                   </div>
                 </article>
               );
@@ -948,11 +1024,16 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="truncate font-semibold text-slate-900">{item.title}</h3>
-                      <button onClick={() => toggleFavorite(item)} className={item.favorite ? "text-amber-500" : "text-slate-300"}>{item.favorite ? "★" : "☆"}</button>
+                      {isMine(item) ? (
+                        <button onClick={() => toggleFavorite(item)} className={item.favorite ? "text-amber-500" : "text-slate-300"}>{item.favorite ? "★" : "☆"}</button>
+                      ) : item.favorite ? (
+                        <span className="text-amber-500" title="Favorit pemiliknya">★</span>
+                      ) : null}
                     </div>
                     <p className="truncate text-xs text-slate-500">{item.url}</p>
                     {item.description && <p className="line-clamp-2 text-sm text-slate-600">{item.description}</p>}
                     <div className="mt-1 flex flex-wrap gap-1">
+                      {!isMine(item) && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700">👤 {ownerLabelOf(item)}</span>}
                       {cat && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ backgroundColor: cat.color }}>{cat.name}</span>}
                       {item.tags.map((t) => (<span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px]">#{t}</span>))}
                       <span className="text-[11px] text-slate-400">{formatDateID(item.createdAt)} • {item.clicks}×</span>
@@ -961,8 +1042,12 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                   <div className="flex shrink-0 gap-1.5">
                     <button onClick={() => handleOpen(item)} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Buka ↗</button>
                     <button onClick={() => handleCopy(item)} className="rounded-lg border px-3 py-2 text-sm">{copiedId === item.id ? "✓" : "Salin"}</button>
-                    <button onClick={() => openEdit(item)} className="rounded-lg border px-3 py-2 text-sm">Edit</button>
-                    <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600">Hapus</button>
+                    {isMine(item) && (
+                      <>
+                        <button onClick={() => openEdit(item)} className="rounded-lg border px-3 py-2 text-sm">Edit</button>
+                        <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600">Hapus</button>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -970,8 +1055,8 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
           </div>
         )}
 
-        {/* Danger zone */}
-        {data.links.length > 0 && (
+        {/* Danger zone — hanya link milik akun yang sedang masuk */}
+        {ownLinks.length > 0 && (
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50/60 px-4 py-3">
             <p className="text-sm text-red-700">Zona berbahaya — menghapus semua link di akun Anda tidak bisa dibatalkan.</p>
             {confirmClearStep === 0 ? (
@@ -980,7 +1065,7 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-red-700">Yakin? Klik sekali lagi untuk konfirmasi:</span>
                 <button onClick={handleClearAll} disabled={clearing} className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
-                  {clearing ? "Menghapus…" : `Ya, Hapus Semua (${data.links.length})`}
+                  {clearing ? "Menghapus…" : `Ya, Hapus Semua (${ownLinks.length})`}
                 </button>
                 <button onClick={() => setConfirmClearStep(0)} className="rounded-lg border px-3 py-2 text-sm">Batal</button>
               </div>
