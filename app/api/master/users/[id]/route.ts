@@ -6,10 +6,13 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-const ALLOWED_STATUS = ["APPROVED", "REJECTED", "PENDING"] as const;
-
-/** Ubah status persetujuan user target (khusus Master). */
-export async function PATCH(req: Request, { params }: Params) {
+/**
+ * Hapus akun user beserta seluruh datanya (khusus Master).
+ * Relasi Category & LinkItem ke User sudah onDelete: Cascade di schema,
+ * tetapi penghapusan dilakukan eksplisit dalam transaksi agar urutannya
+ * pasti: link → kategori → user.
+ */
+export async function DELETE(_req: Request, { params }: Params) {
   const me = await getSessionUser();
   if (!me)
     return NextResponse.json({ error: "Silakan masuk terlebih dahulu." }, { status: 401 });
@@ -18,52 +21,26 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const { id } = await params;
 
-  // Master tidak boleh mengubah status/role akunnya sendiri.
+  // Master tidak boleh menghapus akunnya sendiri.
   if (id === me.id)
     return NextResponse.json(
-      { error: "Anda tidak dapat mengubah status akun Anda sendiri." },
+      { error: "Anda tidak dapat menghapus akun Anda sendiri." },
       { status: 400 }
     );
 
   try {
-    const body = (await req.json()) as { status?: string };
-    const status = String(body.status ?? "").toUpperCase();
-    if (!ALLOWED_STATUS.includes(status as (typeof ALLOWED_STATUS)[number]))
-      return NextResponse.json(
-        { error: "Status tidak valid. Gunakan APPROVED, REJECTED, atau PENDING." },
-        { status: 400 }
-      );
-
-    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    const target = await prisma.user.findUnique({ where: { id }, select: { id: true, email: true } });
     if (!target)
       return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: { status: status as (typeof ALLOWED_STATUS)[number] },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        createdAt: true,
-        _count: { select: { links: true } },
-      },
-    });
+    await prisma.$transaction([
+      prisma.linkItem.deleteMany({ where: { userId: id } }),
+      prisma.category.deleteMany({ where: { userId: id } }),
+      prisma.user.delete({ where: { id } }),
+    ]);
 
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        createdAt: user.createdAt.toISOString(),
-        linkCount: user._count.links,
-      },
-    });
+    return NextResponse.json({ ok: true, deletedEmail: target.email });
   } catch {
-    return NextResponse.json({ error: "Gagal mengubah status user." }, { status: 500 });
+    return NextResponse.json({ error: "Gagal menghapus user." }, { status: 500 });
   }
 }

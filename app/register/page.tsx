@@ -24,10 +24,9 @@ export default function RegisterPage() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Gagal mendaftar.");
-      // Akun baru TIDAK langsung masuk: user biasa berstatus PENDING dan harus
-      // disetujui Master dulu. Arahkan ke /login dengan pesan yang sesuai.
-      const isMaster = j.user?.role === "MASTER";
-      router.push(`/login?notice=${isMaster ? "master" : "pending"}`);
+      // Tidak ada lagi persetujuan: akun baru langsung aktif. Arahkan ke
+      // /login dengan pesan bahwa akun sudah aktif.
+      router.push("/login?notice=aktif");
       router.refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Gagal mendaftar.");
@@ -50,7 +49,7 @@ export default function RegisterPage() {
         <h2 className="mt-6 text-xl font-bold text-slate-900">Daftar Akun Baru</h2>
         <p className="mt-1 text-sm text-slate-500">
           Gratis. Anda mendapat 5 kategori awal (Umum, Pekerjaan, Belajar, Referensi, Hiburan).
-          Akun baru <strong>menunggu persetujuan Master</strong> sebelum bisa masuk.
+          Akun baru <strong>langsung aktif</strong> — setelah daftar Anda bisa langsung masuk.
         </p>
 
         {err && (

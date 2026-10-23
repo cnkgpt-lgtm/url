@@ -7,15 +7,6 @@ import { signIn } from "next-auth/react";
 
 type Msg = { kind: "error" | "warn" | "ok"; text: string };
 
-/** Terjemahkan kode error kustom dari authorize() menjadi pesan Bahasa Indonesia. */
-function messageForCode(code: string | null | undefined): Msg | null {
-  if (code === "PENDING_APPROVAL")
-    return { kind: "warn", text: "Akun Anda belum disetujui Master. Mohon tunggu persetujuan." };
-  if (code === "ACCOUNT_REJECTED")
-    return { kind: "error", text: "Pendaftaran Anda ditolak. Hubungi Master bila ada kekeliruan." };
-  return null;
-}
-
 function LoginForm() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -24,19 +15,11 @@ function LoginForm() {
   const [msg, setMsg] = useState<Msg | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Pesan dari URL: ?code=... (alur redirect NextAuth) atau ?notice=...
-  // (setelah pendaftaran berhasil dari halaman /register).
+  // Pesan dari URL: ?notice=aktif (setelah pendaftaran berhasil dari
+  // halaman /register — akun langsung aktif, tanpa persetujuan).
   const paramMsg = useMemo<Msg | null>(() => {
-    const fromCode = messageForCode(sp.get("code"));
-    if (fromCode) return fromCode;
-    const notice = sp.get("notice");
-    if (notice === "pending")
-      return {
-        kind: "warn",
-        text: "Pendaftaran berhasil. Akun Anda menunggu persetujuan Master sebelum bisa masuk.",
-      };
-    if (notice === "master")
-      return { kind: "ok", text: "Pendaftaran berhasil. Akun Master Anda sudah aktif — silakan masuk." };
+    if (sp.get("notice") === "aktif")
+      return { kind: "ok", text: "Pendaftaran berhasil. Akun Anda langsung aktif — silakan masuk." };
     return null;
   }, [sp]);
 
@@ -49,13 +32,7 @@ function LoginForm() {
     const res = await signIn("credentials", { email, password, redirect: false });
     setBusy(false);
     if (res?.error) {
-      const code = (res as unknown as { code?: string }).code;
-      setMsg(
-        messageForCode(code) ?? {
-          kind: "error",
-          text: "Email atau kata sandi salah. Silakan coba lagi.",
-        }
-      );
+      setMsg({ kind: "error", text: "Email atau kata sandi salah. Silakan coba lagi." });
       return;
     }
     router.push(sp.get("callbackUrl") || "/");

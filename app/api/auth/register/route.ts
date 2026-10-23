@@ -28,13 +28,13 @@ export async function POST(req: Request) {
         { status: 409 }
       );
 
-    // Akun Master pertama: email yang sama persis (case-insensitive) dengan
-    // env MASTER_EMAIL langsung menjadi MASTER + APPROVED. Semua pendaftar
-    // lain menjadi USER + PENDING (menunggu persetujuan Master).
+    // Tidak ada lagi sistem persetujuan: semua akun baru langsung aktif
+    // (status APPROVED). Email yang sama persis (case-insensitive) dengan
+    // env MASTER_EMAIL menjadi role MASTER, pendaftar lain role USER.
     const masterEmail = (process.env.MASTER_EMAIL ?? "").toLowerCase().trim();
     const isMaster = masterEmail !== "" && email === masterEmail;
     const role = isMaster ? "MASTER" : "USER";
-    const status = isMaster ? "APPROVED" : "PENDING";
+    const status = "APPROVED";
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
@@ -51,9 +51,7 @@ export async function POST(req: Request) {
       select: { id: true, email: true, name: true, role: true, status: true },
     });
 
-    const message = isMaster
-      ? "Pendaftaran berhasil. Akun Master Anda sudah aktif — silakan masuk."
-      : "Pendaftaran berhasil. Akun Anda menunggu persetujuan Master sebelum bisa masuk.";
+    const message = "Pendaftaran berhasil. Akun Anda langsung aktif — silakan masuk.";
 
     return NextResponse.json({ ok: true, user, status: user.status, message }, { status: 201 });
   } catch {

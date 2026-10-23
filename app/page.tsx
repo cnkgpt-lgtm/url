@@ -129,19 +129,6 @@ function ArchiveApp({ userName, userEmail, userRole }: { userName: string; userE
   const [data, setData] = useState<AppData>({ links: [], categories: [] });
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [pendingCount, setPendingCount] = useState(0);
-
-  // Master: jumlah pendaftar yang menunggu persetujuan (badge di header)
-  useEffect(() => {
-    if (!isMaster) return;
-    fetch("/api/master/users")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (j && Array.isArray(j.users))
-          setPendingCount(j.users.filter((u: { status?: string }) => u.status === "PENDING").length);
-      })
-      .catch(() => {});
-  }, [isMaster]);
 
   // local (v1) archive migration
   const [localData, setLocalData] = useState<AppData | null>(null);
@@ -694,10 +681,7 @@ function ArchiveApp({ userName, userEmail, userRole }: { userName: string; userE
                 href="/master"
                 className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
               >
-                Persetujuan User
-                {pendingCount > 0 && (
-                  <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{pendingCount}</span>
-                )}
+                Kelola User
               </NextLink>
             )}
             <button onClick={() => setShowCatManager(true)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">

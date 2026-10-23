@@ -1,23 +1,8 @@
-import NextAuth, { CredentialsSignin } from "next-auth";
+import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
-
-/**
- * Error login khusus agar halaman /login bisa membedakan alasan penolakan.
- * Auth.js meneruskan `code` ini ke klien (field `code` pada hasil signIn
- * redirect:false, atau parameter URL ?code= pada alur redirect).
- * CATATAN: melempar Error biasa di authorize() dianggap Auth.js sebagai
- * error "Configuration" — wajib memakai subclass CredentialsSignin ini.
- */
-class PendingApprovalError extends CredentialsSignin {
-  code = "PENDING_APPROVAL";
-}
-
-class AccountRejectedError extends CredentialsSignin {
-  code = "ACCOUNT_REJECTED";
-}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -36,12 +21,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user) return null;
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
-        // Gerbang persetujuan: akun belum disetujui / ditolak Master tidak bisa
-        // masuk. Kode error kustom ini diteruskan NextAuth ke klien (field
-        // `code` pada hasil signIn / parameter URL) dan diterjemahkan halaman
-        // /login menjadi pesan Bahasa Indonesia.
-        if (user.status === "PENDING") throw new PendingApprovalError();
-        if (user.status === "REJECTED") throw new AccountRejectedError();
+        // Tidak ada lagi gerbang persetujuan: user terdaftar dengan kata sandi
+        // benar selalu bisa masuk, apa pun nilai status lama di database.
         return {
           id: user.id,
           email: user.email,

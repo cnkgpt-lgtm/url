@@ -25,9 +25,8 @@ model User {
   name         String?
   email        String     @unique
   passwordHash String
-  // Default APPROVED disengaja: saat `prisma db push` menambahkan kolom ini ke
-  // tabel yang sudah berisi user lama, mereka tidak terkunci. Pendaftar BARU
-  // diberi status PENDING secara eksplisit oleh API register.
+  // Kolom warisan dari versi persetujuan (approval): sudah TIDAK dipakai untuk
+  // memblokir login. Semua pendaftar baru langsung aktif (APPROVED).
   role         Role       @default(USER)
   status       UserStatus @default(APPROVED)
   createdAt    DateTime   @default(now())

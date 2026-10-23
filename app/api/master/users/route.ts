@@ -5,9 +5,8 @@ import { getSessionUser } from "@/lib/session";
 export const dynamic = "force-dynamic";
 
 /**
- * Daftar semua user untuk ditinjau Master.
- * Urutan: PENDING lebih dulu (urutan enum di Postgres mengikuti deklarasi:
- * PENDING, APPROVED, REJECTED), lalu tanggal daftar terbaru.
+ * Daftar semua user untuk dikelola Master (halaman Kelola User).
+ * Urutan: tanggal daftar terbaru lebih dulu.
  */
 export async function GET() {
   const me = await getSessionUser();
@@ -26,7 +25,7 @@ export async function GET() {
       createdAt: true,
       _count: { select: { links: true } },
     },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    orderBy: [{ createdAt: "desc" }],
   });
 
   return NextResponse.json({
