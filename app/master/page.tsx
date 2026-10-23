@@ -169,7 +169,10 @@ export default function MasterPage() {
               <p className="text-xs text-slate-500">Kelola pendaftaran akun Accank Arsip Link</p>
             </div>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <NextLink href="/ganti-sandi" className="rounded-lg px-2 py-2 text-sm font-medium text-slate-500 hover:text-emerald-700 hover:underline">
+              Ganti Sandi
+            </NextLink>
             <NextLink href="/" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">
               ← Kembali ke Arsip
             </NextLink>

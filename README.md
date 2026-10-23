@@ -6,7 +6,8 @@ Platform terpusat untuk menyimpan dan menemukan kembali URL/link yang pernah dib
 
 ## Fitur Akun (v2)
 
-- **Daftar / Masuk** dengan email + kata sandi (NextAuth v5, kata sandi di-hash bcrypt). Halaman: `/register` dan `/login`.
+- **Daftar / Masuk** dengan email + kata sandi (NextAuth v5, kata sandi di-hash bcrypt). Halaman: `/register` dan `/login`. Kata sandi **minimal 6 karakter**.
+- **Ganti Kata Sandi:** user yang sudah masuk bisa mengganti sandinya sendiri lewat halaman `/ganti-sandi` (tautan "Ganti Sandi" di header, di samping tombol Keluar). Wajib mengisi kata sandi lama dengan benar — diverifikasi di server dengan bcrypt (`POST /api/account/password`, 401 tanpa sesi, 400 bila sandi lama salah atau sandi baru < 6 karakter).
 - Akun baru langsung mendapat **5 kategori awal**: Umum, Pekerjaan, Belajar, Referensi, Hiburan (warna sama seperti v1).
 - Semua data (link & kategori) terikat ke akun pemiliknya — API menolak akses tanpa sesi (401) dan tidak pernah mencampur data antar akun.
 - **Migrasi arsip lokal v1:** bila di browser masih ada arsip dari versi localStorage lama (kunci `arsip-link-v1`), setelah masuk akan muncul banner *"Ada arsip lokal di perangkat ini — Impor ke akun"*. Sekali klik, arsip terunggah ke server (duplikat dilewati), lalu Anda ditawari menghapus salinan lokalnya.
@@ -76,6 +77,7 @@ Di Vercel, migrasi skema dijalankan otomatis saat build (`vercel.json` → `buil
 | 8 | Ekspor / Impor | Should Have | Ekspor **JSON** & **CSV** dari data akun (tombol di header). Impor JSON lewat endpoint server `/api/links/import` — kategori dicocokkan per nama, duplikat dilewati, laporan ringkasan (X ditambah, Y dilewati). Endpoint yang sama dipakai untuk migrasi arsip lokal v1. | ✅ Selesai |
 | 9 | Akun & Sinkronisasi Antarperangkat (v2) | — | NextAuth v5 + Prisma + PostgreSQL (Neon). Model `User`, `Category`, `LinkItem` per user. API links/categories wajib sesi (401 tanpa login). | ✅ Selesai |
 | 10 | Role Master & User + Persetujuan Pendaftaran (v2.1) | — | `User.role` (`MASTER`/`USER`) + `User.status` (`PENDING`/`APPROVED`/`REJECTED`). Register baru = USER + PENDING (kecuali email = env `MASTER_EMAIL` → MASTER + APPROVED). Login menolak akun PENDING/REJECTED dengan pesan khusus. Halaman `/master` + API `/api/master/users` untuk setujui/tolak/cabut akses. | ✅ Selesai |
+| 11 | Ganti Kata Sandi (v2.2) | — | Halaman `/ganti-sandi` + `POST /api/account/password`. Wajib sesi (401), sandi lama diverifikasi bcrypt, sandi baru min. 6 karakter. Tautan "Ganti Sandi" di header halaman utama & `/master`. | ✅ Selesai |
 
 ## Struktur Proyek
 
@@ -91,6 +93,8 @@ app/
   api/metadata/route.ts            # API ekstraksi metadata server-side
   api/master/users/route.ts        # GET daftar user (khusus Master)
   api/master/users/[id]/route.ts   # PATCH status persetujuan user (khusus Master)
+  api/account/password/route.ts    # POST ganti kata sandi (wajib sesi, verifikasi sandi lama)
+  ganti-sandi/page.tsx             # Halaman ganti kata sandi (khusus user yang sudah masuk)
   login/page.tsx                   # Halaman masuk (pesan khusus akun PENDING/REJECTED)
   master/page.tsx                  # Halaman Persetujuan User (khusus Master)
   register/page.tsx                # Halaman daftar (akun baru = PENDING, tanpa auto-login)

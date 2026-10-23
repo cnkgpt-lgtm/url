@@ -82,13 +82,13 @@ export default function RegisterPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700">Kata sandi (min. 8 karakter)</label>
+            <label className="block text-sm font-medium text-slate-700">Kata sandi (min. 6 karakter)</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={6}
               autoComplete="new-password"
               placeholder="Buat kata sandi yang kuat"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"

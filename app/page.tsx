@@ -710,6 +710,12 @@ function ArchiveApp({ userName, userEmail, userRole }: { userName: string; userE
             <button onClick={openAdd} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
               + Tambah Link
             </button>
+            <NextLink
+              href="/ganti-sandi"
+              className="rounded-lg px-2 py-2 text-sm font-medium text-slate-500 hover:text-emerald-700 hover:underline"
+            >
+              Ganti Sandi
+            </NextLink>
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

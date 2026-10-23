@@ -18,8 +18,8 @@ export async function POST(req: Request) {
 
     if (!email || !email.includes("@") || !email.includes("."))
       return NextResponse.json({ error: "Email tidak valid. Periksa lagi alamat email Anda." }, { status: 400 });
-    if (password.length < 8)
-      return NextResponse.json({ error: "Kata sandi minimal 8 karakter." }, { status: 400 });
+    if (password.length < 6)
+      return NextResponse.json({ error: "Kata sandi minimal 6 karakter." }, { status: 400 });
 
     const exists = await prisma.user.findUnique({ where: { email } });
     if (exists)
