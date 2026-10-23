@@ -1,26 +1,61 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+
+type Msg = { kind: "error" | "warn" | "ok"; text: string };
+
+/** Terjemahkan kode error kustom dari authorize() menjadi pesan Bahasa Indonesia. */
+function messageForCode(code: string | null | undefined): Msg | null {
+  if (code === "PENDING_APPROVAL")
+    return { kind: "warn", text: "Akun Anda belum disetujui Master. Mohon tunggu persetujuan." };
+  if (code === "ACCOUNT_REJECTED")
+    return { kind: "error", text: "Pendaftaran Anda ditolak. Hubungi Master bila ada kekeliruan." };
+  return null;
+}
 
 function LoginForm() {
   const router = useRouter();
   const sp = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState<Msg | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Pesan dari URL: ?code=... (alur redirect NextAuth) atau ?notice=...
+  // (setelah pendaftaran berhasil dari halaman /register).
+  const paramMsg = useMemo<Msg | null>(() => {
+    const fromCode = messageForCode(sp.get("code"));
+    if (fromCode) return fromCode;
+    const notice = sp.get("notice");
+    if (notice === "pending")
+      return {
+        kind: "warn",
+        text: "Pendaftaran berhasil. Akun Anda menunggu persetujuan Master sebelum bisa masuk.",
+      };
+    if (notice === "master")
+      return { kind: "ok", text: "Pendaftaran berhasil. Akun Master Anda sudah aktif — silakan masuk." };
+    return null;
+  }, [sp]);
+
+  const shown = msg ?? paramMsg;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setErr("");
+    setMsg(null);
     setBusy(true);
     const res = await signIn("credentials", { email, password, redirect: false });
     setBusy(false);
     if (res?.error) {
-      setErr("Email atau kata sandi salah. Silakan coba lagi.");
+      const code = (res as unknown as { code?: string }).code;
+      setMsg(
+        messageForCode(code) ?? {
+          kind: "error",
+          text: "Email atau kata sandi salah. Silakan coba lagi.",
+        }
+      );
       return;
     }
     router.push(sp.get("callbackUrl") || "/");
@@ -43,8 +78,19 @@ function LoginForm() {
           Arsip Anda tersimpan per akun — bisa dibuka dari HP, laptop, atau perangkat apa pun.
         </p>
 
-        {err && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>
+        {shown && (
+          <div
+            className={
+              "mt-4 rounded-lg border px-3 py-2 text-sm " +
+              (shown.kind === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : shown.kind === "warn"
+                  ? "border-amber-300 bg-amber-50 text-amber-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800")
+            }
+          >
+            {shown.text}
+          </div>
         )}
 
         <form onSubmit={submit} className="mt-5 space-y-4">

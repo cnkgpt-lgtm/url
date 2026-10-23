@@ -46,6 +46,7 @@ export default function Home() {
     <ArchiveApp
       userName={session.user.name || ""}
       userEmail={session.user.email || ""}
+      userRole={(session.user as { role?: string }).role || "USER"}
     />
   );
 }
@@ -123,10 +124,24 @@ function Welcome() {
   );
 }
 
-function ArchiveApp({ userName, userEmail }: { userName: string; userEmail: string }) {
+function ArchiveApp({ userName, userEmail, userRole }: { userName: string; userEmail: string; userRole: string }) {
+  const isMaster = userRole === "MASTER";
   const [data, setData] = useState<AppData>({ links: [], categories: [] });
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Master: jumlah pendaftar yang menunggu persetujuan (badge di header)
+  useEffect(() => {
+    if (!isMaster) return;
+    fetch("/api/master/users")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j && Array.isArray(j.users))
+          setPendingCount(j.users.filter((u: { status?: string }) => u.status === "PENDING").length);
+      })
+      .catch(() => {});
+  }, [isMaster]);
 
   // local (v1) archive migration
   const [localData, setLocalData] = useState<AppData | null>(null);
@@ -660,9 +675,31 @@ function ArchiveApp({ userName, userEmail }: { userName: string; userEmail: stri
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <div className="mr-1 hidden text-right sm:block">
-              <p className="text-sm font-semibold leading-tight text-slate-900">{userName || userEmail}</p>
+              <p className="flex items-center justify-end gap-2 text-sm font-semibold leading-tight text-slate-900">
+                {userName || userEmail}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    isMaster
+                      ? "border border-amber-300 bg-amber-100 text-amber-800"
+                      : "border border-slate-200 bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {isMaster ? "Master" : "User"}
+                </span>
+              </p>
               <p className="text-xs leading-tight text-slate-500">{userEmail}</p>
             </div>
+            {isMaster && (
+              <NextLink
+                href="/master"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              >
+                Persetujuan User
+                {pendingCount > 0 && (
+                  <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{pendingCount}</span>
+                )}
+              </NextLink>
+            )}
             <button onClick={() => setShowCatManager(true)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">
               Kelola Kategori
             </button>

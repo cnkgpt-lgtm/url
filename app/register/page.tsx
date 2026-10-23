@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -25,9 +24,10 @@ export default function RegisterPage() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Gagal mendaftar.");
-      const res = await signIn("credentials", { email, password, redirect: false });
-      if (res?.error) throw new Error("Pendaftaran berhasil, tetapi gagal masuk otomatis. Silakan masuk manual.");
-      router.push("/");
+      // Akun baru TIDAK langsung masuk: user biasa berstatus PENDING dan harus
+      // disetujui Master dulu. Arahkan ke /login dengan pesan yang sesuai.
+      const isMaster = j.user?.role === "MASTER";
+      router.push(`/login?notice=${isMaster ? "master" : "pending"}`);
       router.refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Gagal mendaftar.");
@@ -49,7 +49,8 @@ export default function RegisterPage() {
 
         <h2 className="mt-6 text-xl font-bold text-slate-900">Daftar Akun Baru</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Gratis. Anda langsung mendapat 5 kategori awal (Umum, Pekerjaan, Belajar, Referensi, Hiburan).
+          Gratis. Anda mendapat 5 kategori awal (Umum, Pekerjaan, Belajar, Referensi, Hiburan).
+          Akun baru <strong>menunggu persetujuan Master</strong> sebelum bisa masuk.
         </p>
 
         {err && (

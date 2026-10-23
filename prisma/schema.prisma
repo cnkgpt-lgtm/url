@@ -9,11 +9,27 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum Role {
+  MASTER
+  USER
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id           String     @id @default(cuid())
   name         String?
   email        String     @unique
   passwordHash String
+  // Default APPROVED disengaja: saat `prisma db push` menambahkan kolom ini ke
+  // tabel yang sudah berisi user lama, mereka tidak terkunci. Pendaftar BARU
+  // diberi status PENDING secara eksplisit oleh API register.
+  role         Role       @default(USER)
+  status       UserStatus @default(APPROVED)
   createdAt    DateTime   @default(now())
   categories   Category[]
   links        LinkItem[]
