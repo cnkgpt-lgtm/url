@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId } from "@/lib/session";
+import { requireUserId, getSessionUser } from "@/lib/session";
 import { serializeLink } from "@/lib/serialize";
 import { ensureUrl, extractDomain, faviconForDomain, normalizeUrlStrict } from "@/lib/utils";
 
@@ -80,11 +80,15 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
-  const userId = await requireUserId();
-  if (!userId)
+  const me = await getSessionUser();
+  if (!me)
     return NextResponse.json({ error: "Silakan masuk terlebih dahulu." }, { status: 401 });
   const { id } = await params;
-  const existing = await prisma.linkItem.findFirst({ where: { id, userId } });
+  // Master boleh menghapus link milik user mana pun; user biasa hanya miliknya.
+  const existing =
+    me.role === "MASTER"
+      ? await prisma.linkItem.findUnique({ where: { id } })
+      : await prisma.linkItem.findFirst({ where: { id, userId: me.id } });
   if (!existing)
     return NextResponse.json({ error: "Link tidak ditemukan." }, { status: 404 });
   await prisma.linkItem.delete({ where: { id } });

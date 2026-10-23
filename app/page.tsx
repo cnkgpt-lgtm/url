@@ -1008,6 +1008,9 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                         <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50">Hapus</button>
                       </>
                     )}
+                    {!isMine(item) && isMaster && (
+                      <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50">Hapus</button>
+                    )}
                   </div>
                 </article>
               );
@@ -1047,6 +1050,9 @@ function ArchiveApp({ userName, userUsername, userRole }: { userName: string; us
                         <button onClick={() => openEdit(item)} className="rounded-lg border px-3 py-2 text-sm">Edit</button>
                         <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600">Hapus</button>
                       </>
+                    )}
+                    {!isMine(item) && isMaster && (
+                      <button onClick={() => setDeletingId(item.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600">Hapus</button>
                     )}
                   </div>
                 </div>
